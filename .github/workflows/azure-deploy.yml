@@ -36,21 +36,14 @@ jobs:
     - name: Deploy Bicep Infrastructure
       id: deploy-infra
       run: |
-        # Check if Key Vault already exists (from setup script)
-        KV_EXISTS=$(az keyvault list --resource-group ${{ env.AZURE_RESOURCE_GROUP }} --query "[?starts_with(name, 'ssw-fatdigester-kv')].name | [0]" -o tsv || echo "")
-        
-        if [ -n "$KV_EXISTS" ]; then
-          echo "Using existing Key Vault: $KV_EXISTS"
-          PARAMS="keyVaultName='$KV_EXISTS' environment=prod"
-        else
-          echo "Key Vault not found. Using parameters from GitHub Secrets."
-          PARAMS="azureOpenAIApiKey='${{ secrets.AZURE_OPENAI_API_KEY }}' azureOpenAIEndpoint='${{ secrets.AZURE_OPENAI_ENDPOINT }}' azureOpenAIDeploymentName='${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}' environment=prod"
-        fi
-        
         output=$(az deployment group create \
           --resource-group ${{ env.AZURE_RESOURCE_GROUP }} \
           --template-file infra/main.bicep \
-          --parameters $PARAMS \
+          --parameters \
+            azureOpenAIApiKey='${{ secrets.AZURE_OPENAI_API_KEY }}' \
+            azureOpenAIEndpoint='${{ secrets.AZURE_OPENAI_ENDPOINT }}' \
+            azureOpenAIDeploymentName='${{ secrets.AZURE_OPENAI_DEPLOYMENT_NAME }}' \
+            environment=prod \
           --output json)
         
         webAppName=$(echo $output | jq -r '.properties.outputs.webAppName.value')

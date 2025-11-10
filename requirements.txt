@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+openai
+pandas
+matplotlib
+plotly
+python-multipart
+aiofiles
+tenacity
+kaleido

@@ -141,14 +141,19 @@ Return ONLY one word from the options above."""
 Answer: "{answer}"
 
 Task:
-1. Identify the most interesting, unique, or noteworthy parts of this answer that would be valuable to discuss in a video
-2. Rate the overall interestingness of this answer from 1-10 (where 10 = extremely interesting for video content)
-3. Return specific phrases or sentences that should be highlighted (bolded) in the final report
+1. Rate the overall interestingness of this answer from 1-10 (where 10 = extremely interesting for video content)
+2. Identify ONLY 1-3 SHORT key phrases (maximum 8 words each) that are:
+   - Memorable and quotable
+   - Worth reading aloud in a video
+   - Capture the most interesting or unique part of the answer
+   - NOT full sentences - just the key words/phrases
+
+IMPORTANT: Be very selective. Only highlight the most impactful words. If the answer is generic or boring, return an empty list.
 
 Return your response in this JSON format:
 {{
     "interestingness_score": <number 1-10>,
-    "interesting_phrases": [<list of exact phrases from the answer to highlight>],
+    "interesting_phrases": [<list of 1-3 SHORT exact phrases from the answer, max 8 words each>],
     "reasoning": "<brief explanation>"
 }}"""
 

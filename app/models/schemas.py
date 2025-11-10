@@ -43,9 +43,15 @@ class ProcessingStatus(BaseModel):
     status: JobStatus
     progress: float = Field(0.0, ge=0.0, le=100.0)
     message: str
+    details: Optional[str] = None
+    current_step: Optional[str] = None
+    total_questions: Optional[int] = None
+    processed_questions: Optional[int] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
     output_file: Optional[str] = None
+    markdown_content: Optional[str] = None
+    charts: Optional[Dict[str, str]] = None
     error: Optional[str] = None
 
 
@@ -54,6 +60,12 @@ class StatusResponse(BaseModel):
     status: JobStatus
     progress: float
     message: str
+    details: Optional[str] = None
+    current_step: Optional[str] = None
+    total_questions: Optional[int] = None
+    processed_questions: Optional[int] = None
+    markdown_content: Optional[str] = None
+    charts: Optional[Dict[str, str]] = None
 
 
 class ChartConfig(BaseModel):

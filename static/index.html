@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSW.FatDigester</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><img src="/static/ssw-logo-icon.svg" alt="SSW Logo" class="logo-icon"> SSW.FatDigester</h1>
+            <p>Transform your survey data into intelligent insights</p>
+        </header>
+
+        <div id="upload-section" class="section active">
+            <div class="upload-area" id="upload-area">
+                <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                </svg>
+                <h2>Drop your CSV file here</h2>
+                <p>or click to browse</p>
+                <input type="file" id="file-input" accept=".csv" hidden>
+                <button class="btn btn-primary" id="browse-btn">Browse Files</button>
+            </div>
+
+            <div class="form-group">
+                <label for="survey-topic">Survey Topic (optional)</label>
+                <input type="text" id="survey-topic" placeholder="e.g., Customer Satisfaction Survey">
+                <small>Providing context helps the AI analyze your data more accurately</small>
+            </div>
+
+            <button class="btn btn-primary btn-large" id="process-btn" disabled>
+                Process CSV
+            </button>
+        </div>
+
+        <div id="processing-section" class="section">
+            <div class="progress-container">
+                <div class="spinner"></div>
+                <h2 id="progress-message">Starting analysis...</h2>
+            </div>
+        </div>
+
+        <div id="results-section" class="section">
+            <div class="results-header">
+                <h2>✨ Analysis Complete!</h2>
+                <div class="action-buttons">
+                    <button class="btn btn-secondary" id="download-btn">
+                        📥 Download Report
+                    </button>
+                    <button class="btn btn-primary" id="new-analysis-btn">
+                        ➕ New Analysis
+                    </button>
+                </div>
+            </div>
+            
+            <div class="markdown-preview" id="markdown-preview">
+                <!-- Rendered markdown will appear here -->
+            </div>
+        </div>
+
+        <div id="error-section" class="section">
+            <div class="error-container">
+                <h2>❌ Something went wrong</h2>
+                <p id="error-message"></p>
+                <button class="btn btn-primary" id="retry-btn">Try Again</button>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Powered by Azure OpenAI GPT-4.1-mini • <a href="/docs" target="_blank">API Docs</a></p>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: false,
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#cc4141',
+                primaryTextColor: '#333',
+                primaryBorderColor: '#aaa',
+                lineColor: '#797979',
+                secondaryColor: '#f5f5f5',
+                tertiaryColor: '#fff'
+            }
+        });
+    </script>
+    <script src="/static/app.js"></script>
+</body>
+</html>
+

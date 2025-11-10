@@ -57,10 +57,8 @@ class MarkdownBuilder:
         markdown_lines.append(f"## {qa.question}")
         markdown_lines.append("")
         
-        if hasattr(qa, 'chart_path') and qa.chart_path and os.path.exists(qa.chart_path):
-            chart_filename = os.path.basename(qa.chart_path)
-            alt_text = qa.question.replace("\n", " ").replace("\r", " ")[:100]
-            markdown_lines.append(f"![{alt_text}](charts/{chart_filename})")
+        if hasattr(qa, 'chart_path') and qa.chart_path:
+            markdown_lines.append(qa.chart_path)
             markdown_lines.append("")
     
     def _add_qualitative_section(

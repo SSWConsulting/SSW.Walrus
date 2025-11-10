@@ -54,7 +54,13 @@ async def get_job_status(job_id: str):
         job_id=job.job_id,
         status=job.status,
         progress=job.progress,
-        message=job.message
+        message=job.message,
+        details=job.details,
+        current_step=job.current_step,
+        total_questions=job.total_questions,
+        processed_questions=job.processed_questions,
+        markdown_content=job.markdown_content if job.status == JobStatus.COMPLETED else None,
+        charts=job.charts if job.status == JobStatus.COMPLETED else None
     )
 
 

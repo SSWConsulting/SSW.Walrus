@@ -1,11 +1,11 @@
-# CSV AI Processor
+# SSW.FatDigester
 
-An intelligent CSV processor that uses Azure OpenAI GPT-5-nano to analyze Microsoft Forms survey data and generate comprehensive markdown reports with charts and AI-powered insights.
+An intelligent CSV processor that uses Azure OpenAI GPT-4.1-mini to analyze Microsoft Forms survey data and generate comprehensive markdown reports with charts and AI-powered insights.
 
 ## Features
 
 - 🤖 **AI-Powered Analysis**: Uses Azure OpenAI to intelligently process CSV data row-by-row and cell-by-cell
-- 📊 **Automatic Chart Generation**: Creates beautiful charts for quantitative data (bar, pie, line, histogram, etc.)
+- 📊 **Automatic Chart Generation**: Creates beautiful Mermaid diagrams for quantitative data (bar, pie, line, histogram, etc.)
 - 💡 **Smart Highlighting**: Identifies and highlights interesting talking points in qualitative responses
 - 📈 **Interest Scoring**: Ranks responses by interestingness for video content creation
 - 🎯 **Question Type Detection**: Automatically identifies quantitative vs qualitative questions
@@ -21,7 +21,7 @@ FastAPI Application
 ├── Background Processing (async job queue)
 ├── LLM Service (Azure OpenAI integration)
 ├── CSV Processor (row-by-row analysis)
-├── Chart Generator (matplotlib/plotly)
+├── Chart Generator (Mermaid diagrams)
 └── Markdown Builder (report generation)
 ```
 
@@ -30,7 +30,7 @@ FastAPI Application
 ### Prerequisites
 
 - Python 3.9+
-- Azure OpenAI API access with GPT-5-nano deployment
+- Azure OpenAI API access with GPT-4.1-mini deployment
 
 ### Setup
 
@@ -60,7 +60,7 @@ Edit `.env` with your Azure OpenAI credentials:
 ```
 AZURE_OPENAI_API_KEY=your_api_key_here
 AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-5-nano
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4.1-mini
 AZURE_OPENAI_API_VERSION=2023-12-01-preview
 ```
 
@@ -375,13 +375,30 @@ docker run -p 8000:8000 --env-file .env csv-ai-processor
 
 ## Troubleshooting
 
+### Memory Management
+
+The application automatically cleans up old jobs every hour:
+- Removes completed/failed jobs older than 1 hour
+- Deletes associated output files
+- Cleans up temp CSV files immediately after processing
+
+**Manual cleanup:**
+```bash
+curl -X POST http://localhost:8000/cleanup
+```
+
+**Check memory stats:**
+```bash
+curl http://localhost:8000/stats
+```
+
 ### Common Issues
 
 **Issue: "Module not found" errors**
 - Solution: Ensure you're in the virtual environment and all dependencies are installed
 
-**Issue: Charts not generating**
-- Solution: Check matplotlib is properly installed and can access display backend
+**Issue: Charts not rendering**
+- Solution: Ensure your markdown viewer supports Mermaid diagrams (most modern viewers do)
 
 **Issue: LLM errors**
 - Solution: Verify Azure OpenAI credentials and deployment name are correct
@@ -408,9 +425,6 @@ docker run -p 8000:8000 --env-file .env csv-ai-processor
 - [ ] Advanced analytics and insights
 - [ ] Question grouping and categorization
 
-## License
-
-[Your License Here]
 
 ## Support
 
@@ -418,5 +432,5 @@ For issues, questions, or contributions, please [open an issue](your-repo-url/is
 
 ---
 
-**Built with ❤️ using FastAPI, Azure OpenAI, and Python**
+**Built with ❤️ using FastAPI, Azure OpenAI GPT-4.1-mini, and Python**
 

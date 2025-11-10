@@ -6,8 +6,9 @@ from app.models.schemas import QuestionAnalysis, QuestionType, QualitativeAnswer
 
 
 class CSVProcessor:
-    def __init__(self, survey_topic: Optional[str] = None):
+    def __init__(self, survey_topic: Optional[str] = None, status_callback: Optional[callable] = None):
         self.survey_topic = survey_topic
+        self.status_callback = status_callback
         self.headers: List[str] = []
         self.name_column_idx: int = -1
         self.question_analyses: List[QuestionAnalysis] = []
@@ -33,9 +34,23 @@ class CSVProcessor:
         )
         
     def process_csv(self, file_path: str) -> Dict[str, Any]:
+        if self.status_callback:
+            self.status_callback(
+                message="Reading CSV file",
+                details="Loading and parsing CSV with automatic encoding detection",
+                current_step="CSV Parsing"
+            )
+        
         df = self._read_csv_with_encoding(file_path)
         
         self.headers = df.columns.tolist()
+        
+        if self.status_callback:
+            self.status_callback(
+                message="Analyzing CSV structure",
+                details=f"Identifying respondent names from {len(self.headers)} columns",
+                current_step="Column Analysis"
+            )
         
         sample_rows = df.head(5).values.tolist()
         
@@ -46,10 +61,32 @@ class CSVProcessor:
         
         print(f"Identified name column at index: {self.name_column_idx}")
         
+        if self.status_callback:
+            self.status_callback(
+                message="Detecting questions",
+                details=f"Filtering out administrative columns",
+                current_step="Question Detection"
+            )
+        
         question_columns = self._identify_question_columns(df)
         
-        for col_idx, col_name in question_columns:
-            print(f"Analyzing question: {col_name}")
+        if self.status_callback:
+            self.status_callback(
+                message=f"Found {len(question_columns)} questions",
+                details=f"Analyzing {len(df)} respondents",
+                current_step="Ready to Process"
+            )
+        
+        for q_num, (col_idx, col_name) in enumerate(question_columns, 1):
+            print(f"Analyzing question {q_num}/{len(question_columns)}: {col_name}")
+            
+            if self.status_callback:
+                self.status_callback(
+                    message=f"Processing question {q_num} of {len(question_columns)}",
+                    details=f"Analyzing responses",
+                    current_step=f"Question {q_num}/{len(question_columns)}"
+                )
+            
             question_analysis = self._analyze_question_column(df, col_idx, col_name)
             self.question_analyses.append(question_analysis)
         
@@ -93,6 +130,14 @@ class CSVProcessor:
         
         sample_answers = [str(ans) for ans in column_data[:10] if str(ans).strip()]
         
+        # Report status for question type analysis
+        if self.status_callback:
+            self.status_callback(
+                message=f"Classifying question type",
+                details=f"Analyzing sample responses",
+                current_step="Question Classification"
+            )
+        
         question_type = llm_service.analyze_question_type(
             col_name,
             sample_answers,
@@ -107,9 +152,23 @@ class CSVProcessor:
         )
         
         if question_type == QuestionType.QUANTITATIVE:
+            if self.status_callback:
+                self.status_callback(
+                    message=f"Processing {len(column_data)} quantitative responses",
+                    details=f"Determining best chart type for numeric data",
+                    current_step="Quantitative Analysis"
+                )
+            
             analysis.answers = [str(ans) for ans in column_data]
             analysis.chart_type = llm_service.suggest_chart_type(col_name, analysis.answers)
         else:
+            if self.status_callback:
+                self.status_callback(
+                    message=f"Starting qualitative analysis",
+                    details=f"Analyzing {len(column_data)} text responses with AI",
+                    current_step="Qualitative Analysis"
+                )
+            
             qualitative_answers = self._process_qualitative_answers(
                 df, col_idx, col_name, column_data
             )
@@ -174,13 +233,26 @@ class CSVProcessor:
         
         processed_answers = []
         
-        for row_idx, answer in enumerate(df.iloc[:, col_idx]):
+        # Collect all valid answers first to get accurate count
+        valid_answers = []
+        for row_idx, answer in df.iloc[:, col_idx].items():
             if pd.isna(answer) or not str(answer).strip():
                 continue
-            
-            answer_str = str(answer).strip()
-            
+            valid_answers.append((row_idx, str(answer).strip()))
+        
+        total_answers = len(valid_answers)
+        
+        # Process each valid answer
+        for answer_idx, (row_idx, answer_str) in enumerate(valid_answers, 1):
             respondent = self._get_respondent_name(df, row_idx)
+            
+            # Report status
+            if self.status_callback and answer_idx % 2 == 1:  # Update every other response to avoid spam
+                self.status_callback(
+                    message=f"AI analyzing qualitative responses ({answer_idx}/{total_answers})",
+                    details=f"Processing answer from {respondent}",
+                    current_step="Qualitative Analysis"
+                )
             
             highlight_result = llm_service.highlight_interesting_parts(
                 answer_str,
@@ -204,6 +276,14 @@ class CSVProcessor:
             processed_answers.append(qual_answer)
             
             print(f"  Processed answer from {respondent} (score: {qual_answer.interestingness_score})")
+        
+        # Report sorting status
+        if self.status_callback:
+            self.status_callback(
+                message=f"Ranking {len(processed_answers)} responses by interestingness",
+                details="Sorting to show most interesting answers first",
+                current_step="Sorting Results"
+            )
         
         processed_answers.sort(key=lambda x: x.interestingness_score, reverse=True)
         

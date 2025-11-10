@@ -132,14 +132,7 @@ class CSVProcessor:
         
         for base_name, columns in base_name_groups.items():
             if len(columns) > 1:
-                has_non_blank_duplicates = False
-                for col_idx, col_name in columns:
-                    non_blank_count = df.iloc[:, col_idx].notna().sum()
-                    if non_blank_count > 0:
-                        has_non_blank_duplicates = True
-                        break
-                
-                if has_non_blank_duplicates:
+                if self._is_true_multiselect(columns, df):
                     print(f"Detected multi-select question: '{base_name}' ({len(columns)} options)")
                     self.multi_select_groups[base_name] = columns
                     processed_columns.append((columns[0][0], base_name))
@@ -150,17 +143,32 @@ class CSVProcessor:
         
         return processed_columns
     
-    def _extract_base_question(self, col_name: str) -> str:
-        import re
+    def _is_true_multiselect(self, columns: List[Tuple[int, str]], df: pd.DataFrame) -> bool:
+        if not columns or len(columns) < 2:
+            return False
         
+        first_col_name = columns[0][1]
+        if '[' not in first_col_name or ']' not in first_col_name:
+            return False
+        
+        for col_idx, col_name in columns:
+            if '[' not in col_name or ']' not in col_name:
+                return False
+        
+        multi_select_rows = 0
+        for row_idx in range(len(df)):
+            filled_count = 0
+            for col_idx, col_name in columns:
+                if pd.notna(df.iloc[row_idx, col_idx]) and str(df.iloc[row_idx, col_idx]).strip():
+                    filled_count += 1
+            if filled_count > 1:
+                multi_select_rows += 1
+        
+        return multi_select_rows >= 1
+    
+    def _extract_base_question(self, col_name: str) -> str:
         if '[' in col_name and ']' in col_name:
             return col_name.split('[')[0].strip()
-        
-        match = re.search(r'^(.*?)(?:\s*[-–—]\s*|\s+\d+\.|$)', col_name)
-        if match:
-            base = match.group(1).strip()
-            if base and len(base) > 3:
-                return base
         
         return col_name
     

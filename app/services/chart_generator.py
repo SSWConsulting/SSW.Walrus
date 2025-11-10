@@ -46,7 +46,6 @@ class ChartGenerator:
         mermaid = "```mermaid\n"
         mermaid += "%%{init: {'theme':'base', 'themeVariables': {'xyChart': {'backgroundColor': 'transparent', 'titleColor': '#333333', 'xAxisLabelColor': '#333333', 'yAxisLabelColor': '#333333', 'xAxisLineColor': '#333333', 'yAxisLineColor': '#333333', 'plotColorPalette': '#cc4141'}}}}%%\n"
         mermaid += "xychart-beta\n"
-        mermaid += f'    title "{self._sanitize_label(title, self.settings.chart_title_max_length)}"\n'
         mermaid += '    x-axis ['
         
         labels = [f'"{self._sanitize_label(item[0], self.settings.chart_label_max_length)}"' for item in items]
@@ -70,7 +69,6 @@ class ChartGenerator:
         mermaid = "```mermaid\n"
         mermaid += f"%%{{init: {{'theme':'base', 'themeVariables': {{'primaryColor':'{self.settings.theme_primary_color}','primaryTextColor':'{self.settings.theme_charcoal}','primaryBorderColor':'{self.settings.theme_grey}','lineColor':'{self.settings.theme_dark_grey}','secondaryColor':'#f5f5f5'}}}}}}%%\n"
         mermaid += "pie showData\n"
-        mermaid += f'    title {self._sanitize_label(title, self.settings.chart_title_max_length)}\n'
         
         for label, count in items:
             clean_label = self._sanitize_label(label, self.settings.pie_label_max_length)
@@ -88,7 +86,6 @@ class ChartGenerator:
                 mermaid = "```mermaid\n"
                 mermaid += "%%{init: {'theme':'base', 'themeVariables': {'xyChart': {'backgroundColor': 'transparent', 'titleColor': '#333333', 'xAxisLabelColor': '#333333', 'yAxisLabelColor': '#333333', 'xAxisLineColor': '#333333', 'yAxisLineColor': '#333333', 'plotColorPalette': '#cc4141'}}}}%%\n"
                 mermaid += "xychart-beta\n"
-                mermaid += f'    title "{self._sanitize_label(title, self.settings.chart_title_max_length)}"\n'
                 
                 indices = list(range(min(len(numeric_data), 50)))
                 mermaid += '    x-axis ['
@@ -120,7 +117,6 @@ class ChartGenerator:
                 mermaid = "```mermaid\n"
                 mermaid += "%%{init: {'theme':'base', 'themeVariables': {'xyChart': {'backgroundColor': 'transparent', 'titleColor': '#333333', 'xAxisLabelColor': '#333333', 'yAxisLabelColor': '#333333', 'xAxisLineColor': '#333333', 'yAxisLineColor': '#333333', 'plotColorPalette': '#cc4141'}}}}%%\n"
                 mermaid += "xychart-beta\n"
-                mermaid += f'    title "{self._sanitize_label(title, self.settings.chart_title_max_length)}"\n'
                 mermaid += '    x-axis ['
                 mermaid += ', '.join([str(item[0]) for item in items])
                 mermaid += ']\n'

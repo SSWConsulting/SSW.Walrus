@@ -54,12 +54,21 @@ class MarkdownBuilder:
         qa: QuestionAnalysis,
         question_num: int
     ):
-        markdown_lines.append(f"## {qa.question}")
+        markdown_lines.append(f'<div class="collapsible-question">')
+        markdown_lines.append(f'<div class="question-header" onclick="toggleQuestion(this)">')
+        markdown_lines.append(f'<span class="question-toggle">▼</span>')
+        markdown_lines.append(f'<h2 class="question-title">{qa.question}</h2>')
+        markdown_lines.append(f'</div>')
+        markdown_lines.append(f'<div class="question-content">')
         markdown_lines.append("")
         
         if hasattr(qa, 'chart_path') and qa.chart_path:
             markdown_lines.append(qa.chart_path)
             markdown_lines.append("")
+        
+        markdown_lines.append(f'</div>')
+        markdown_lines.append(f'</div>')
+        markdown_lines.append("")
     
     def _add_qualitative_section(
         self,
@@ -67,25 +76,33 @@ class MarkdownBuilder:
         qa: QuestionAnalysis,
         question_num: int
     ):
-        markdown_lines.append(f"## {qa.question}")
+        markdown_lines.append(f'<div class="collapsible-question">')
+        markdown_lines.append(f'<div class="question-header" onclick="toggleQuestion(this)">')
+        markdown_lines.append(f'<span class="question-toggle">▼</span>')
+        markdown_lines.append(f'<h2 class="question-title">{qa.question}</h2>')
+        markdown_lines.append(f'</div>')
+        markdown_lines.append(f'<div class="question-content">')
         markdown_lines.append("")
         
         if not qa.answers:
             markdown_lines.append("*No responses*")
             markdown_lines.append("")
-            return
+        else:
+            markdown_lines.append("| Respondent | Response | Score |")
+            markdown_lines.append("|------------|----------|-------|")
+            
+            for answer in qa.answers:
+                if isinstance(answer, QualitativeAnswer):
+                    respondent = answer.respondent[:30]
+                    response_text = answer.highlighted_answer.replace("\n", " ").replace("|", "\\|")
+                    score = f"{answer.interestingness_score:.1f}"
+                    
+                    markdown_lines.append(f"| {respondent} | {response_text} | {score} |")
+            
+            markdown_lines.append("")
         
-        markdown_lines.append("| Respondent | Response | Score |")
-        markdown_lines.append("|------------|----------|-------|")
-        
-        for answer in qa.answers:
-            if isinstance(answer, QualitativeAnswer):
-                respondent = answer.respondent[:30]
-                response_text = answer.highlighted_answer.replace("\n", " ").replace("|", "\\|")
-                score = f"{answer.interestingness_score:.1f}"
-                
-                markdown_lines.append(f"| {respondent} | {response_text} | {score} |")
-        
+        markdown_lines.append(f'</div>')
+        markdown_lines.append(f'</div>')
         markdown_lines.append("")
 
 

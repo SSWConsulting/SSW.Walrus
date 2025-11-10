@@ -7,8 +7,6 @@ let pollInterval = null;
 const uploadArea = document.getElementById('upload-area');
 const fileInput = document.getElementById('file-input');
 const browseBtn = document.getElementById('browse-btn');
-const surveyTopicInput = document.getElementById('survey-topic');
-const processBtn = document.getElementById('process-btn');
 const downloadBtn = document.getElementById('download-btn');
 const newAnalysisBtn = document.getElementById('new-analysis-btn');
 const retryBtn = document.getElementById('retry-btn');
@@ -60,23 +58,11 @@ fileInput.addEventListener('change', (e) => {
     }
 });
 
-function handleFileSelect(file) {
+async function handleFileSelect(file) {
     selectedFile = file;
-    uploadArea.querySelector('h2').textContent = file.name;
-    uploadArea.querySelector('p').textContent = `${(file.size / 1024).toFixed(1)} KB`;
-    processBtn.disabled = false;
-}
-
-processBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
     
     const formData = new FormData();
     formData.append('file', selectedFile);
-    
-    const surveyTopic = surveyTopicInput.value.trim();
-    if (surveyTopic) {
-        formData.append('survey_topic', surveyTopic);
-    }
     
     try {
         showSection(processingSection);
@@ -103,7 +89,7 @@ processBtn.addEventListener('click', async () => {
         console.error('Upload error:', error);
         showError(error.message);
     }
-});
+}
 
 function startPolling() {
     pollInterval = setInterval(checkStatus, 2000);
@@ -156,6 +142,8 @@ async function displayResults(markdown) {
     
     await renderMermaidDiagrams();
     
+    document.querySelector('.container').classList.add('results-mode');
+    document.querySelector('header').classList.add('compact');
     showSection(resultsSection);
 }
 
@@ -242,21 +230,27 @@ newAnalysisBtn.addEventListener('click', () => {
     selectedFile = null;
     currentJobId = null;
     fileInput.value = '';
-    surveyTopicInput.value = '';
     uploadArea.querySelector('h2').textContent = 'Drop your CSV file here';
     uploadArea.querySelector('p').textContent = 'or click to browse';
-    processBtn.disabled = true;
     markdownPreview.innerHTML = '';
+    document.querySelector('.container').classList.remove('results-mode');
+    document.querySelector('header').classList.remove('compact');
     showSection(uploadSection);
 });
 
 retryBtn.addEventListener('click', () => {
+    document.querySelector('.container').classList.remove('results-mode');
+    document.querySelector('header').classList.remove('compact');
     showSection(uploadSection);
 });
 
 function showError(message) {
     errorMessage.textContent = message;
     showSection(errorSection);
+}
+
+window.toggleQuestion = function(headerElement) {
+    headerElement.classList.toggle('collapsed');
 }
 
 if (window.location.pathname === '/' || window.location.pathname === '/static/index.html') {

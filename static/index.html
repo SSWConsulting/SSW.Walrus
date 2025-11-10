@@ -10,7 +10,7 @@
     <div class="container">
         <header>
             <h1><img src="/static/ssw-logo-icon.svg" alt="SSW Logo" class="logo-icon"> SSW.FatDigester</h1>
-            <p>Transform your survey data into intelligent insights</p>
+            <p>Transform your survey data into a readable digest</p>
         </header>
 
         <div id="upload-section" class="section active">
@@ -25,16 +25,6 @@
                 <input type="file" id="file-input" accept=".csv" hidden>
                 <button class="btn btn-primary" id="browse-btn">Browse Files</button>
             </div>
-
-            <div class="form-group">
-                <label for="survey-topic">Survey Topic (optional)</label>
-                <input type="text" id="survey-topic" placeholder="e.g., Customer Satisfaction Survey">
-                <small>Providing context helps the AI analyze your data more accurately</small>
-            </div>
-
-            <button class="btn btn-primary btn-large" id="process-btn" disabled>
-                Process CSV
-            </button>
         </div>
 
         <div id="processing-section" class="section">
@@ -72,7 +62,7 @@
     </div>
 
     <footer>
-        <p>Powered by Azure OpenAI GPT-4.1-mini • <a href="/docs" target="_blank">API Docs</a></p>
+        <p>Made with ❤️ by <a href="https://ssw.com.au" target="_blank">SSW</a></p>
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>

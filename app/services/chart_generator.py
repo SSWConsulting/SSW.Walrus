@@ -44,7 +44,7 @@ class ChartGenerator:
         items = counter.most_common(15)
         
         mermaid = "```mermaid\n"
-        mermaid += f"%%{{init: {{'theme':'base', 'themeVariables': {{'primaryColor':'{self.settings.theme_primary_color}','primaryTextColor':'{self.settings.theme_charcoal}','primaryBorderColor':'{self.settings.theme_grey}','lineColor':'{self.settings.theme_dark_grey}','secondaryColor':'#f5f5f5'}}}}}}%%\n"
+        mermaid += "%%{init: {'theme':'base', 'themeVariables': {'xyChart': {'backgroundColor': 'transparent', 'titleColor': '#333333', 'xAxisLabelColor': '#333333', 'yAxisLabelColor': '#333333', 'xAxisLineColor': '#333333', 'yAxisLineColor': '#333333', 'plotColorPalette': '#cc4141'}}}}%%\n"
         mermaid += "xychart-beta\n"
         mermaid += f'    title "{self._sanitize_label(title, self.settings.chart_title_max_length)}"\n'
         mermaid += '    x-axis ['
@@ -86,7 +86,7 @@ class ChartGenerator:
             
             if numeric_data and len(numeric_data) > 1:
                 mermaid = "```mermaid\n"
-                mermaid += f"%%{{init: {{'theme':'base', 'themeVariables': {{'primaryColor':'{self.settings.theme_primary_color}','primaryTextColor':'{self.settings.theme_charcoal}','primaryBorderColor':'{self.settings.theme_grey}','lineColor':'{self.settings.theme_dark_grey}','secondaryColor':'#f5f5f5'}}}}}}%%\n"
+                mermaid += "%%{init: {'theme':'base', 'themeVariables': {'xyChart': {'backgroundColor': 'transparent', 'titleColor': '#333333', 'xAxisLabelColor': '#333333', 'yAxisLabelColor': '#333333', 'xAxisLineColor': '#333333', 'yAxisLineColor': '#333333', 'plotColorPalette': '#cc4141'}}}}%%\n"
                 mermaid += "xychart-beta\n"
                 mermaid += f'    title "{self._sanitize_label(title, self.settings.chart_title_max_length)}"\n'
                 
@@ -118,7 +118,7 @@ class ChartGenerator:
                 items = sorted(counter.items())[:20]
                 
                 mermaid = "```mermaid\n"
-                mermaid += f"%%{{init: {{'theme':'base', 'themeVariables': {{'primaryColor':'{self.settings.theme_primary_color}','primaryTextColor':'{self.settings.theme_charcoal}','primaryBorderColor':'{self.settings.theme_grey}','lineColor':'{self.settings.theme_dark_grey}','secondaryColor':'#f5f5f5'}}}}}}%%\n"
+                mermaid += "%%{init: {'theme':'base', 'themeVariables': {'xyChart': {'backgroundColor': 'transparent', 'titleColor': '#333333', 'xAxisLabelColor': '#333333', 'yAxisLabelColor': '#333333', 'xAxisLineColor': '#333333', 'yAxisLineColor': '#333333', 'plotColorPalette': '#cc4141'}}}}%%\n"
                 mermaid += "xychart-beta\n"
                 mermaid += f'    title "{self._sanitize_label(title, self.settings.chart_title_max_length)}"\n'
                 mermaid += '    x-axis ['

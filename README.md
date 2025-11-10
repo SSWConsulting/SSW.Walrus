@@ -2,6 +2,10 @@
 
 An intelligent CSV processor that uses Azure OpenAI GPT-4.1-mini to analyze Microsoft Forms survey data and generate comprehensive markdown reports with charts and AI-powered insights.
 
+## Try it out!
+
+https://ssw-fatdigester-prod.azurewebsites.net/
+
 ## Features
 
 - 🤖 **AI-Powered Analysis**: Uses Azure OpenAI to intelligently process CSV data row-by-row and cell-by-cell

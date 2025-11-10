@@ -1,6 +1,7 @@
 import csv
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import pandas as pd
+from collections import defaultdict
 from app.services.llm_service import llm_service
 from app.models.schemas import QuestionAnalysis, QuestionType, QualitativeAnswer
 
@@ -12,6 +13,7 @@ class CSVProcessor:
         self.headers: List[str] = []
         self.name_column_idx: int = -1
         self.question_analyses: List[QuestionAnalysis] = []
+        self.multi_select_groups: Dict[str, List[Tuple[int, str]]] = {}
     
     def _read_csv_with_encoding(self, file_path: str) -> pd.DataFrame:
         encodings = ['utf-8', 'cp1252', 'iso-8859-1', 'latin1', 'macroman']
@@ -99,26 +101,68 @@ class CSVProcessor:
     def _identify_question_columns(self, df: pd.DataFrame) -> List[tuple[int, str]]:
         question_columns = []
         
-        skip_keywords = [
-            'timestamp', 'id', 'date', 'time',
-            'email', 'e-mail', 'mail',
-            'project', 'team', 'department',
-            'username', 'user name', 'login',
-            'phone', 'mobile', 'contact'
-        ]
+        skip_exact_matches = ['id', 'email', 'e-mail', 'name', 'username', 'user name']
+        skip_starts_with = ['timestamp', 'start time', 'completion time', 'submit time', 'response id']
         
         for idx, col_name in enumerate(self.headers):
             if idx == self.name_column_idx:
                 continue
             
-            col_lower = col_name.lower()
-            if any(skip in col_lower for skip in skip_keywords):
+            col_lower = col_name.lower().strip()
+            
+            if col_lower in skip_exact_matches:
+                print(f"Skipping administrative column: {col_name}")
+                continue
+            
+            if any(col_lower.startswith(skip) for skip in skip_starts_with):
                 print(f"Skipping administrative column: {col_name}")
                 continue
             
             question_columns.append((idx, col_name))
         
-        return question_columns
+        return self._detect_and_group_multiselect(question_columns, df)
+    
+    def _detect_and_group_multiselect(self, question_columns: List[Tuple[int, str]], df: pd.DataFrame) -> List[Tuple[int, str]]:
+        base_name_groups = defaultdict(list)
+        processed_columns = []
+        
+        for idx, col_name in question_columns:
+            base_name = self._extract_base_question(col_name)
+            base_name_groups[base_name].append((idx, col_name))
+        
+        for base_name, columns in base_name_groups.items():
+            if len(columns) > 1:
+                has_non_blank_duplicates = False
+                for col_idx, col_name in columns:
+                    non_blank_count = df.iloc[:, col_idx].notna().sum()
+                    if non_blank_count > 0:
+                        has_non_blank_duplicates = True
+                        break
+                
+                if has_non_blank_duplicates:
+                    print(f"Detected multi-select question: '{base_name}' ({len(columns)} options)")
+                    self.multi_select_groups[base_name] = columns
+                    processed_columns.append((columns[0][0], base_name))
+                else:
+                    processed_columns.extend(columns)
+            else:
+                processed_columns.extend(columns)
+        
+        return processed_columns
+    
+    def _extract_base_question(self, col_name: str) -> str:
+        import re
+        
+        if '[' in col_name and ']' in col_name:
+            return col_name.split('[')[0].strip()
+        
+        match = re.search(r'^(.*?)(?:\s*[-–—]\s*|\s+\d+\.|$)', col_name)
+        if match:
+            base = match.group(1).strip()
+            if base and len(base) > 3:
+                return base
+        
+        return col_name
     
     def _analyze_question_column(
         self, 
@@ -126,11 +170,13 @@ class CSVProcessor:
         col_idx: int, 
         col_name: str
     ) -> QuestionAnalysis:
+        if col_name in self.multi_select_groups:
+            return self._analyze_multiselect_question(df, col_name, self.multi_select_groups[col_name])
+        
         column_data = df.iloc[:, col_idx].dropna().tolist()
         
         sample_answers = [str(ans) for ans in column_data[:10] if str(ans).strip()]
         
-        # Report status for question type analysis
         if self.status_callback:
             self.status_callback(
                 message=f"Classifying question type",
@@ -173,6 +219,50 @@ class CSVProcessor:
                 df, col_idx, col_name, column_data
             )
             analysis.answers = qualitative_answers
+        
+        return analysis
+    
+    def _analyze_multiselect_question(
+        self,
+        df: pd.DataFrame,
+        base_question: str,
+        columns: List[Tuple[int, str]]
+    ) -> QuestionAnalysis:
+        print(f"Processing multi-select question: {base_question}")
+        
+        all_selected_options = []
+        
+        for row_idx in range(len(df)):
+            for col_idx, col_name in columns:
+                cell_value = df.iloc[row_idx, col_idx]
+                if pd.notna(cell_value) and str(cell_value).strip():
+                    option_name = col_name.replace(base_question, '').strip()
+                    if option_name.startswith('[') and option_name.endswith(']'):
+                        option_name = option_name[1:-1]
+                    elif option_name.startswith('-') or option_name.startswith('–'):
+                        option_name = option_name[1:].strip()
+                    
+                    if not option_name:
+                        option_name = col_name
+                    
+                    all_selected_options.append(option_name)
+        
+        if self.status_callback:
+            self.status_callback(
+                message=f"Processing multi-select responses",
+                details=f"Aggregating {len(all_selected_options)} option selections",
+                current_step="Multi-select Analysis"
+            )
+        
+        analysis = QuestionAnalysis(
+            question=base_question,
+            question_type=QuestionType.QUANTITATIVE,
+            column_index=columns[0][0],
+            answers=all_selected_options if all_selected_options else []
+        )
+        
+        if all_selected_options:
+            analysis.chart_type = llm_service.suggest_chart_type(base_question, all_selected_options)
         
         return analysis
     

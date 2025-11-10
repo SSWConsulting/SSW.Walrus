@@ -317,6 +317,7 @@ header p {
     border-collapse: collapse;
     margin: 1.5rem 0;
     font-size: 0.95rem;
+    table-layout: fixed;
 }
 
 .markdown-preview th {
@@ -327,9 +328,25 @@ header p {
     border-bottom: 2px solid var(--border);
 }
 
+.markdown-preview th:nth-child(1) {
+    width: 20%;
+}
+
+.markdown-preview th:nth-child(2) {
+    width: 70%;
+}
+
+.markdown-preview th:nth-child(3) {
+    width: 10%;
+}
+
 .markdown-preview td {
     padding: 0.75rem;
     border-bottom: 1px solid var(--border);
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    word-break: break-word;
+    hyphens: auto;
 }
 
 .markdown-preview tr:hover {
@@ -439,6 +456,17 @@ footer a:hover {
     .markdown-preview {
         padding: 1rem;
         font-size: 0.9rem;
+    }
+
+    .markdown-preview table {
+        font-size: 0.85rem;
+        display: block;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .markdown-preview td {
+        padding: 0.5rem;
     }
 }
 

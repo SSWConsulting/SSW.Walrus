@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{SURVEY_NAME}} - Survey Dashboard ({{DATE}})</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SSW Brand: Inter font for web -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        // SSW Brand Colors Configuration
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        // SSW Primary Red: #CC4141
+                        'ssw-red': {
+                            DEFAULT: '#CC4141',
+                            50: '#FCE9E9',
+                            100: '#F8D4D4',
+                            200: '#F1A9A9',
+                            300: '#E97D7D',
+                            400: '#E25252',
+                            500: '#CC4141',
+                            600: '#A33434',
+                            700: '#7A2727',
+                            800: '#521A1A',
+                            900: '#290D0D'
+                        },
+                        // SSW Charcoal: #333333
+                        'ssw-charcoal': {
+                            DEFAULT: '#333333',
+                            50: '#F5F5F5',
+                            100: '#E8E8E8',
+                            200: '#D1D1D1',
+                            300: '#B0B0B0',
+                            400: '#888888',
+                            500: '#666666',
+                            600: '#4D4D4D',
+                            700: '#333333',
+                            800: '#1A1A1A',
+                            900: '#0D0D0D'
+                        },
+                        // SSW Gray palette
+                        'ssw-gray': {
+                            50: '#FAFAFA',
+                            100: '#F4F4F5',
+                            200: '#E4E4E7',
+                            300: '#D4D4D8',
+                            400: '#A1A1AA',
+                            500: '#71717A',
+                            600: '#52525B',
+                            700: '#3F3F46',
+                            800: '#27272A',
+                            900: '#18181B'
+                        }
+                    },
+                    fontFamily: {
+                        'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        [x-cloak] { display: none !important; }
+
+        /* SSW Brand Typography */
+        html {
+            font-size: 18px;
+        }
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        }
+
+        /* Strong heading differentiation per SSW rules */
+        h1 { font-weight: 800; letter-spacing: -0.025em; }
+        h2 { font-weight: 700; letter-spacing: -0.02em; }
+        h3 { font-weight: 600; }
+
+        @media print {
+            .no-print { display: none; }
+            .print-break { page-break-before: always; }
+        }
+
+        /* SSW-style card hover effect */
+        .ssw-card {
+            transition: all 0.2s ease;
+            border: 1px solid #E4E4E7;
+        }
+        .ssw-card:hover {
+            border-color: #CC4141;
+            box-shadow: 0 4px 12px rgba(204, 65, 65, 0.1);
+        }
+
+        /* Tab active state with SSW red */
+        .tab-active {
+            background-color: #CC4141;
+            color: white;
+        }
+
+        /* SSW branded scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #F4F4F5; }
+        ::-webkit-scrollbar-thumb { background: #CC4141; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #A33434; }
+
+        /* Grade badges */
+        .grade-a { background: #059669; }
+        .grade-b { background: #0891B2; }
+        .grade-c { background: #F59E0B; }
+        .grade-d { background: #DC2626; }
+        .grade-f { background: #7F1D1D; }
+
+        /* Score bar component */
+        .score-bar {
+            height: 12px;
+            border-radius: 6px;
+            background: #F4F4F5;
+            overflow: hidden;
+        }
+        .score-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s ease;
+        }
+        .score-bar-fill.score-high { background: #059669; }
+        .score-bar-fill.score-medium { background: #F59E0B; }
+        .score-bar-fill.score-low { background: #CC4141; }
+
+        /* Theme card styles */
+        .theme-card {
+            border-left: 4px solid #E4E4E7;
+            transition: all 0.2s ease;
+        }
+        .theme-card.theme-negative { border-left-color: #CC4141; }
+        .theme-card.theme-positive { border-left-color: #059669; }
+        .theme-card.theme-mixed { border-left-color: #F59E0B; }
+        .theme-card.theme-neutral { border-left-color: #A1A1AA; }
+
+        /* Segment table styles */
+        .segment-table th {
+            background: #F4F4F5;
+            font-weight: 600;
+            text-align: left;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            color: #333333;
+            border-bottom: 2px solid #E4E4E7;
+        }
+        .segment-table td {
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #F4F4F5;
+        }
+        .segment-table tr:hover td {
+            background: #FAFAFA;
+        }
+
+        /* Severity badges */
+        .severity-critical {
+            background: #FCE9E9;
+            color: #CC4141;
+            font-weight: 600;
+        }
+        .severity-high {
+            background: #FEF3C7;
+            color: #92400E;
+            font-weight: 600;
+        }
+        .severity-moderate {
+            background: #F4F4F5;
+            color: #52525B;
+            font-weight: 500;
+        }
+        .severity-low {
+            background: #ECFDF5;
+            color: #065F46;
+            font-weight: 500;
+        }
+
+        /* k-anonymity warning banner */
+        .k-anonymity-banner {
+            background: #FEF3C7;
+            border: 1px solid #F59E0B;
+            border-radius: 8px;
+            padding: 0.75rem 1rem;
+            font-size: 0.875rem;
+            color: #92400E;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* Radar chart container */
+        .radar-chart-container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        /* Distribution mini-chart */
+        .distribution-bar {
+            display: flex;
+            align-items: end;
+            gap: 2px;
+            height: 40px;
+        }
+        .distribution-bar-segment {
+            flex: 1;
+            background: #CC4141;
+            opacity: 0.7;
+            border-radius: 2px 2px 0 0;
+            transition: opacity 0.2s;
+            min-width: 8px;
+        }
+        .distribution-bar-segment:hover {
+            opacity: 1;
+        }
+
+        /* Quote styling */
+        .quote-block {
+            border-left: 3px solid #CC4141;
+            padding-left: 1rem;
+            font-style: italic;
+            color: #52525B;
+        }
+        .quote-attribution {
+            font-style: normal;
+            font-weight: 600;
+            color: #333333;
+            font-size: 0.85rem;
+            margin-top: 0.25rem;
+        }
+
+        /* Interactive question card styles */
+        .question-card-header {
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        .question-card-header:hover {
+            background-color: #FAFAFA;
+        }
+        .question-card-body {
+            border-top: 1px solid #E4E4E7;
+        }
+        .chevron-icon {
+            transition: transform 0.2s ease;
+            display: inline-block;
+        }
+        .chevron-icon.open {
+            transform: rotate(180deg);
+        }
+
+        /* Search highlight */
+        mark.search-highlight {
+            background-color: #FCE9E9;
+            color: #CC4141;
+            padding: 0 2px;
+            border-radius: 2px;
+        }
+
+        /* Individual response list */
+        .response-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .response-item:nth-child(odd) {
+            background-color: #FAFAFA;
+        }
+        .response-item:nth-child(even) {
+            background-color: #FFFFFF;
+        }
+        .response-item {
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #F4F4F5;
+        }
+
+        /* Heatmap interactive styles */
+        .heatmap-cell {
+            position: relative;
+            cursor: pointer;
+            transition: filter 0.15s ease;
+        }
+        .heatmap-cell:hover {
+            outline: 2px solid #333333;
+            outline-offset: -1px;
+            filter: brightness(0.95);
+        }
+        .heatmap-tooltip {
+            position: absolute;
+            bottom: calc(100% + 8px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333333;
+            color: white;
+            padding: 0.5rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            z-index: 50;
+            pointer-events: none;
+        }
+        .heatmap-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 5px solid transparent;
+            border-top-color: #333333;
+        }
+
+        /* Expand/collapse toolbar */
+        .search-toolbar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: white;
+            border: 1px solid #E4E4E7;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+        .search-toolbar input {
+            flex: 1;
+            border: 1px solid #E4E4E7;
+            border-radius: 6px;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            outline: none;
+            transition: border-color 0.15s;
+        }
+        .search-toolbar input:focus {
+            border-color: #CC4141;
+        }
+        .search-toolbar button {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            border-radius: 6px;
+            border: 1px solid #E4E4E7;
+            background: white;
+            color: #333333;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .search-toolbar button:hover {
+            background: #F4F4F5;
+            border-color: #CC4141;
+        }
+
+        /* Standout response cards */
+        .standout-card {
+            border-left: 4px solid #CC4141;
+            background: white;
+            border-radius: 0 8px 8px 0;
+            padding: 1rem 1.25rem;
+        }
+        .standout-badge {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 0.125rem 0.5rem;
+            border-radius: 9999px;
+            background: #FCE9E9;
+            color: #CC4141;
+        }
+
+        /* Show more button */
+        .show-more-btn {
+            display: inline-block;
+            margin-top: 0.5rem;
+            padding: 0.375rem 1rem;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #CC4141;
+            background: #FCE9E9;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.15s;
+        }
+        .show-more-btn:hover {
+            background: #F8D4D4;
+        }
+
+        /* Flag badges in collapsed question cards */
+        .flag-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 500;
+            padding: 0.125rem 0.5rem;
+            border-radius: 9999px;
+            background: #FEF3C7;
+            color: #92400E;
+        }
+        .flag-badge.flag-critical {
+            background: #FCE9E9;
+            color: #CC4141;
+        }
+
+        /* Survey group divider (multi-survey mode) */
+        .survey-group-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            margin: 1.5rem 0 1rem 0;
+            background: #F4F4F5;
+            border-left: 4px solid #CC4141;
+            border-radius: 0 8px 8px 0;
+        }
+        .survey-group-header:first-child {
+            margin-top: 0;
+        }
+        .survey-group-header h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #333333;
+            margin: 0;
+        }
+        .survey-group-header .survey-group-count {
+            font-size: 0.8rem;
+            color: #71717A;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body class="bg-ssw-gray-50 min-h-screen">
+    <div x-data="{ activeTab: 'overview', searchQuery: '' }" class="max-w-6xl mx-auto py-8 px-4">
+
+        <!-- SSW Branded Header -->
+        <header class="mb-8">
+            <div class="flex items-center justify-between flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <!-- SSW Logo Squares Motif -->
+                    <div class="flex gap-0.5">
+                        <div class="w-3 h-3 bg-ssw-red"></div>
+                        <div class="w-3 h-3 bg-ssw-charcoal"></div>
+                        <div class="w-3 h-3 bg-ssw-gray-400"></div>
+                        <div class="w-3 h-3 bg-ssw-red-300"></div>
+                    </div>
+                    <div>
+                        <h1 class="text-3xl text-ssw-charcoal">
+                            <span class="font-extrabold">{{SURVEY_NAME}}</span>
+                        </h1>
+                        <p class="text-ssw-gray-500 mt-1 font-medium">Survey Analysis Dashboard</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-2xl font-bold text-ssw-red">{{DATE}}</p>
+                    <p class="text-sm text-ssw-gray-500 font-medium">{{RESPONSE_COUNT}} responses • {{COMPLETION_RATE}}% completion{{PER_SURVEY_COUNTS}}</p>
+                </div>
+            </div>
+
+            <!-- Key Metrics Bar -->
+            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
+                {{KEY_METRICS_CARDS}}
+            </div>
+        </header>
+
+        <!-- Tab Navigation - SSW Style -->
+        <nav class="flex flex-wrap gap-2 mb-6 border-b border-ssw-gray-200 pb-4 no-print">
+            <button @click="activeTab = 'overview'"
+                    :class="activeTab === 'overview' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                📋 Overview
+            </button>
+            <button @click="activeTab = 'responses'"
+                    :class="activeTab === 'responses' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                📊 Responses
+            </button>
+            <button @click="activeTab = 'themes'"
+                    :class="activeTab === 'themes' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                💬 Themes
+            </button>
+            <button @click="activeTab = 'segments'"
+                    :class="activeTab === 'segments' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                👥 Segments
+            </button>
+            <button @click="activeTab = 'insights'"
+                    :class="activeTab === 'insights' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
+                🚨 Insights & Actions
+            </button>
+        </nav>
+
+        <!-- Search & Expand Toolbar (visible on Responses and Themes tabs) -->
+        <div x-show="activeTab === 'responses' || activeTab === 'themes'" x-cloak class="search-toolbar no-print">
+            <input type="text" x-model="searchQuery" placeholder="Search questions, themes, quotes..." aria-label="Search dashboard content">
+            <button x-show="searchQuery.length > 0" @click="searchQuery = ''" title="Clear search">&times; Clear</button>
+            <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
+            <button @click="$dispatch('collapse-all')" title="Collapse all cards">Collapse All</button>
+        </div>
+
+        <!-- Tab Content -->
+        <main>
+            <!-- Overview Tab -->
+            <div x-show="activeTab === 'overview'" x-cloak>
+                <!-- Executive Summary -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Executive Summary
+                    </h2>
+                    <ul class="space-y-2 text-ssw-gray-600 leading-relaxed">
+                        {{EXECUTIVE_SUMMARY}}
+                    </ul>
+                </section>
+
+                <!-- Overall Verdict -->
+                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h2 class="text-lg font-bold">Overall Verdict</h2>
+                            <p class="text-ssw-gray-300 mt-1">{{OVERALL_VERDICT}}</p>
+                        </div>
+                        <div class="text-4xl font-bold">{{OVERALL_GRADE}}</div>
+                    </div>
+                </section>
+
+                <!-- Focus Area Summary (if applicable) -->
+                {{FOCUS_SUMMARY}}
+
+                <!-- Standout Responses (notable individual answers worth highlighting) -->
+                <!--
+                     Each standout response MUST follow this structure:
+
+                     <div class="standout-card mb-4">
+                       <div class="flex items-center gap-2 mb-2">
+                         <span class="font-semibold text-ssw-charcoal">Respondent Name</span>
+                         <span class="standout-badge">Why it stands out</span>
+                       </div>
+                       <p class="text-xs text-ssw-gray-500 mb-1">Answering: "Question text"</p>
+                       <blockquote class="quote-block">"Verbatim response text"</blockquote>
+                     </div>
+
+                     Wrap all standout cards in a section with heading:
+                     <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                       <h2 class="text-lg text-ssw-charcoal mb-4">💡 Standout Responses</h2>
+                       ...cards...
+                     </section>
+                -->
+                {{STANDOUT_RESPONSES}}
+
+                <!-- Hard Truths Section -->
+                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
+                    <h2 class="text-lg text-ssw-red-700 mb-4 flex items-center font-bold">
+                        ⚠️ Hard Truths
+                    </h2>
+                    <div class="space-y-2 text-ssw-charcoal">
+                        {{HARD_TRUTHS}}
+                    </div>
+                </section>
+            </div>
+
+            <!-- Responses Tab -->
+            <div x-show="activeTab === 'responses'" x-cloak>
+                <!-- Score Distribution Chart -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Score Distribution Overview
+                    </h2>
+                    <div class="max-w-3xl mx-auto">
+                        <canvas id="scoreDistributionChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Question Breakdown (Interactive Expandable Cards) -->
+                <!-- Multi-survey: Use {{SURVEY_GROUP_HEADER}} before each group of questions from the same survey.
+                     Format: <div class="survey-group-header"><h3>Survey Name</h3><span class="survey-group-count">N responses</span></div>
+                     Single-survey: Omit survey group headers entirely.
+
+                     Each question card MUST follow this Alpine.js pattern:
+
+                     NUMERIC QUESTION CARD:
+                     <div x-data="{ open: false, showAll: false }"
+                          @expand-all.window="open = true"
+                          @collapse-all.window="open = false"
+                          x-show="!searchQuery || 'LOWERCASE_SEARCH_INDEX'.includes(searchQuery.toLowerCase())"
+                          class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">
+                       <div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">
+                         <div class="flex-1">
+                           <p class="font-semibold text-ssw-charcoal text-sm">Q: Question text here</p>
+                           <div class="flex items-center gap-3 mt-2">
+                             <div class="score-bar flex-1 max-w-xs"><div class="score-bar-fill score-{high|medium|low}" style="width: {pct}%"></div></div>
+                             <span class="text-sm font-bold">{mean}/{scale}</span>
+                             <span class="flag-badge">flag text</span>
+                           </div>
+                         </div>
+                         <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
+                       </div>
+                       <template x-if="open">
+                         <div class="question-card-body p-4">
+                           <p class="text-sm text-ssw-gray-600 mb-3">Commentary text here</p>
+                           <div class="distribution-bar mb-3" title="Distribution: ...">segments...</div>
+                           <div class="flex flex-wrap gap-4 text-xs text-ssw-gray-500 mb-3">
+                             <span>Skip rate: N%</span><span>SD: X</span><span>Shape: normal</span>
+                           </div>
+                           <div class="text-xs text-ssw-gray-500 mb-2 font-semibold">Correlations / Flags details...</div>
+                           <h4 class="text-sm font-semibold text-ssw-charcoal mt-4 mb-2">Individual Responses</h4>
+                           <div class="response-list">
+                             ...first 20 response-items...
+                             <template x-if="!showAll">
+                               <button class="show-more-btn" @click="showAll = true">Show N more responses</button>
+                             </template>
+                             <template x-if="showAll">
+                               ...remaining response-items...
+                             </template>
+                           </div>
+                         </div>
+                       </template>
+                     </div>
+
+                     FREE-TEXT QUESTION CARD:
+                     Same pattern but shows text responses instead of score bar.
+                     Collapsed: question text + response count badge + chevron
+                     Expanded: all text responses with respondent names, paginated at 20
+
+                     SEARCH INDEX: Bake a lowercase string (max 500 chars) into the x-show expression
+                     containing question text + insight + flag text for fast client-side filtering.
+                -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Question-by-Question Breakdown
+                    </h2>
+                    <div class="space-y-3">
+                        {{QUESTION_BREAKDOWN}}
+                    </div>
+                </section>
+            </div>
+
+            <!-- Themes Tab -->
+            <div x-show="activeTab === 'themes'" x-cloak>
+                <!-- Sentiment Overview -->
+                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
+                    <h2 class="text-lg font-bold mb-2">Emotional Temperature</h2>
+                    {{SENTIMENT_OVERVIEW}}
+                </section>
+
+                <!-- Emotional Profile Radar Chart -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Emotional Profile
+                    </h2>
+                    <div class="radar-chart-container">
+                        <canvas id="emotionalRadarChart"></canvas>
+                    </div>
+                </section>
+
+                <!-- Theme Cards (Interactive Expandable) -->
+                <!--
+                     Each theme card MUST follow this Alpine.js pattern:
+
+                     <div x-data="{ open: false }"
+                          @expand-all.window="open = true"
+                          @collapse-all.window="open = false"
+                          x-show="!searchQuery || 'LOWERCASE_SEARCH_INDEX'.includes(searchQuery.toLowerCase())"
+                          class="theme-card theme-{sentiment} bg-white rounded-lg p-4">
+                       <div class="question-card-header flex items-center justify-between" @click="open = !open">
+                         <div class="flex-1">
+                           <div class="flex items-center gap-2">
+                             <h3 class="font-semibold text-ssw-charcoal">Theme Name</h3>
+                             <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-ssw-gray-100">N responses (X%)</span>
+                           </div>
+                           <p class="quote-block text-sm mt-2">"Representative quote here"</p>
+                           <p class="quote-attribution">— Respondent Name</p>
+                         </div>
+                         <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
+                       </div>
+                       <template x-if="open">
+                         <div class="question-card-body pt-4 mt-3">
+                           <div class="flex flex-wrap gap-3 text-xs text-ssw-gray-500 mb-3">
+                             <span>Actionability: high</span>
+                             <span>Appears in: Q2, Q5, Q7</span>
+                           </div>
+                           <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">All Quotes (N)</h4>
+                           <div class="response-list space-y-2">
+                             ...all quote items with respondent attribution...
+                           </div>
+                         </div>
+                       </template>
+                     </div>
+
+                     SEARCH INDEX: Bake theme name + representative quote + respondent names
+                     (max 500 chars) into the x-show expression.
+                -->
+                <section>
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Key Themes from Free-Text Responses
+                    </h2>
+                    <div class="space-y-4">
+                        {{THEME_CARDS}}
+                    </div>
+                </section>
+
+                <!-- Notable Quotes -->
+                <section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4">💬 Notable Quotes</h2>
+                    <div class="space-y-4">
+                        {{NOTABLE_QUOTES}}
+                    </div>
+                </section>
+            </div>
+
+            <!-- Segments Tab -->
+            <div x-show="activeTab === 'segments'" x-cloak>
+                <!-- k-Anonymity Notice -->
+                {{K_ANONYMITY_BANNER}}
+
+                <!-- Segment Comparison -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Segment Comparison
+                    </h2>
+                    {{SEGMENT_COMPARISON}}
+                </section>
+
+                <!-- Cross-Tab Heatmap (Interactive with Tooltips) -->
+                <!--
+                     Each heatmap cell MUST follow this Alpine.js pattern:
+
+                     <td class="heatmap-cell" x-data="{ hover: false }"
+                         @mouseenter="hover = true" @mouseleave="hover = false"
+                         style="background-color: {color}">
+                       <span class="font-semibold text-sm">{value}</span>
+                       <div x-show="hover" x-cloak class="heatmap-tooltip">
+                         <div class="font-semibold">{segment} × {question}</div>
+                         <div>Score: {value} | n={sampleSize}</div>
+                       </div>
+                     </td>
+
+                     Suppressed cells: show "—" with a tooltip explaining suppression.
+                -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Cross-Tabulation Heatmap
+                    </h2>
+                    <div class="max-w-4xl mx-auto">
+                        <canvas id="heatmapChart"></canvas>
+                    </div>
+                    {{HEATMAP_TABLE}}
+                </section>
+
+                <!-- Gap Analysis -->
+                <section class="bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6 mb-6">
+                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">Gap Analysis — Where Experiences Diverge</h2>
+                    {{GAP_ANALYSIS}}
+                </section>
+
+                <!-- At-Risk Segments -->
+                <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2 animate-pulse"></span>
+                        At-Risk Segments
+                    </h2>
+                    {{AT_RISK_SEGMENTS}}
+                </section>
+            </div>
+
+            <!-- Insights & Actions Tab -->
+            <div x-show="activeTab === 'insights'" x-cloak>
+                <!-- Red Flags -->
+                <section class="mb-6 bg-ssw-red-50 border-2 border-ssw-red border-dashed rounded-xl p-6">
+                    <h2 class="text-lg text-ssw-red font-bold mb-4">🚩 Red Flags</h2>
+                    {{RED_FLAGS}}
+                </section>
+
+                <!-- Risk Radar -->
+                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Risk Radar
+                    </h2>
+                    {{RISK_RADAR}}
+                </section>
+
+                <!-- Recommendations -->
+                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
+                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
+                        <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
+                        Recommendations
+                    </h2>
+                    {{RECOMMENDATIONS}}
+                </section>
+
+                <!-- Predictions -->
+                <section class="bg-ssw-charcoal rounded-xl p-6 text-white">
+                    <h2 class="text-lg font-bold mb-4">🔮 Predictions</h2>
+                    {{PREDICTIONS}}
+                </section>
+            </div>
+        </main>
+
+        <!-- SSW Branded Footer -->
+        <footer class="text-center text-ssw-gray-400 text-sm mt-12 pt-8 border-t border-ssw-gray-200 no-print">
+            <div class="flex items-center justify-center gap-2 mb-2">
+                <!-- SSW Logo Squares Motif -->
+                <div class="flex gap-0.5">
+                    <div class="w-2 h-2 bg-ssw-red"></div>
+                    <div class="w-2 h-2 bg-ssw-charcoal"></div>
+                    <div class="w-2 h-2 bg-ssw-gray-400"></div>
+                    <div class="w-2 h-2 bg-ssw-red-300"></div>
+                </div>
+                <span class="font-semibold text-ssw-charcoal">SSW</span>
+                <span class="text-ssw-gray-400">Survey Analysis Dashboard</span>
+            </div>
+            <p class="text-ssw-gray-400">{{GENERATED_AT}}</p>
+        </footer>
+    </div>
+
+    <!-- Chart.js Initialization with SSW Colors -->
+    <script>
+        // SSW Brand Colors for Charts
+        const sswColors = {
+            red: '#CC4141',
+            redLight: '#E25252',
+            redDark: '#A33434',
+            charcoal: '#333333',
+            gray: '#666666',
+            grayLight: '#888888',
+            green: '#059669',
+            amber: '#F59E0B',
+            // Chart palette
+            palette: ['#CC4141', '#333333', '#666666', '#E25252', '#888888', '#A33434', '#B0B0B0']
+        };
+
+        Chart.defaults.font.family = "'Inter', system-ui, sans-serif";
+        Chart.defaults.color = '#333333';
+
+        {{CHART_SCRIPTS}}
+    </script>
+</body>
+</html>

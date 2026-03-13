@@ -34,4 +34,10 @@ env/
 outputs/
 temp/
 *.csv
+*.pptx
 
+
+surveys/
+downloads/
+node_modules/
+azure-function/node_modules/

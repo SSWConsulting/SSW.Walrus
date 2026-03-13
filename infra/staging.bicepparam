@@ -1,7 +1,7 @@
 using './main.bicep'
 
 param project = 'walrus'
-param environment = 'prod'
+param environment = 'staging'
 param location = 'australiaeast'
 param githubOrg = 'SSWConsulting'
 param imageTag = 'latest'

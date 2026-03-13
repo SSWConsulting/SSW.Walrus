@@ -1,133 +1,137 @@
-@description('The name of the application')
-param appName string = 'ssw-fatdigester'
+@description('Project name')
+param project string = 'walrus'
 
-@description('Location for all resources')
-param location string = resourceGroup().location
-
-@description('Environment name (dev, staging, prod)')
+@description('Environment name')
 @allowed([
-  'dev'
   'staging'
   'prod'
 ])
-param environment string = 'prod'
+param environment string
 
-@description('Azure OpenAI API Key')
-@secure()
-param azureOpenAIApiKey string
+@description('Azure region')
+param location string = 'australiaeast'
 
-@description('Azure OpenAI Endpoint')
-param azureOpenAIEndpoint string
+@description('GitHub org for container registry')
+param githubOrg string = 'SSWConsulting'
 
-@description('Azure OpenAI Deployment Name')
-param azureOpenAIDeploymentName string = 'gpt-4.1-mini'
+@description('Container image tag')
+param imageTag string = 'latest'
 
-@description('Azure OpenAI API Version')
-param azureOpenAIApiVersion string = '2023-12-01-preview'
+@description('Claude model to use')
+param claudeModel string = 'claude-sonnet-4-6'
 
-@description('App Service Plan SKU')
-@allowed([
-  'B1'
-  'B2'
-  'B3'
-  'S1'
-  'S2'
-  'S3'
-  'P1v2'
-  'P2v2'
-  'P3v2'
-])
-param appServicePlanSku string = 'B1'
+@description('Cost category tag for billing')
+param costCategoryTag string = 'SSW.Walrus'
 
-var appServicePlanName = '${appName}-plan-${environment}'
-var webAppName = '${appName}-${environment}'
-var logAnalyticsWorkspaceName = '${appName}-logs-${environment}'
-var appInsightsName = '${appName}-insights-${environment}'
-
-// Log Analytics Workspace
-resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
-  name: logAnalyticsWorkspaceName
-  location: location
-  properties: {
-    sku: {
-      name: 'PerGB2018'
-    }
-    retentionInDays: 30
+// 1. Managed Identity
+module managedIdentity 'modules/managedIdentity.bicep' = {
+  name: 'managedIdentity'
+  params: {
+    project: project
+    environment: environment
+    location: location
   }
 }
 
-// Application Insights
-resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
-  name: appInsightsName
-  location: location
-  kind: 'web'
-  properties: {
-    Application_Type: 'web'
-    WorkspaceResourceId: logAnalytics.id
-    IngestionMode: 'LogAnalytics'
+// 2. Key Vault
+module keyVault 'modules/keyVault.bicep' = {
+  name: 'keyVault'
+  params: {
+    project: project
+    environment: environment
+    location: location
   }
 }
 
-// App Service Plan
-resource appServicePlan 'Microsoft.Web/serverfarms@2022-09-01' = {
-  name: appServicePlanName
-  location: location
-  sku: {
-    name: appServicePlanSku
+// 3. Key Vault Role Assignment (identity → KV Secrets User)
+module keyVaultRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
+  name: 'keyVaultRoleAssignment'
+  params: {
+    keyVaultName: keyVault.outputs.name
+    principalId: managedIdentity.outputs.principalId
   }
-  kind: 'linux'
-  properties: {
-    reserved: true
+  dependsOn: [
+    keyVault
+    managedIdentity
+  ]
+}
+
+// 4. Storage (queue + blob)
+module storage 'modules/storage.bicep' = {
+  name: 'storage'
+  params: {
+    project: project
+    environment: environment
+    location: location
   }
 }
 
-// Web App
-resource webApp 'Microsoft.Web/sites@2022-09-01' = {
-  name: webAppName
-  location: location
-  properties: {
-    serverFarmId: appServicePlan.id
-    siteConfig: {
-      linuxFxVersion: 'PYTHON|3.11'
-      alwaysOn: true
-      healthCheckPath: '/health'
-      appSettings: [
-        {
-          name: 'AZURE_OPENAI_API_KEY'
-          value: azureOpenAIApiKey
-        }
-        {
-          name: 'AZURE_OPENAI_ENDPOINT'
-          value: azureOpenAIEndpoint
-        }
-        {
-          name: 'AZURE_OPENAI_DEPLOYMENT_NAME'
-          value: azureOpenAIDeploymentName
-        }
-        {
-          name: 'AZURE_OPENAI_API_VERSION'
-          value: azureOpenAIApiVersion
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsights.properties.ConnectionString
-        }
-        {
-          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
-          value: 'true'
-        }
-      ]
-      ftpsState: 'Disabled'
-      minTlsVersion: '1.2'
-      http20Enabled: true
-    }
-    httpsOnly: true
+// 5. Monitoring (Log Analytics + App Insights)
+module monitoring 'modules/monitoring.bicep' = {
+  name: 'monitoring'
+  params: {
+    project: project
+    environment: environment
+    location: location
   }
 }
 
-// Output values
-output webAppName string = webApp.name
-output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
-output appInsightsInstrumentationKey string = appInsights.properties.InstrumentationKey
-output appInsightsConnectionString string = appInsights.properties.ConnectionString
+// 6. Container App Environment + Job
+module containerApp 'modules/containerApp.bicep' = {
+  name: 'containerApp'
+  params: {
+    project: project
+    environment: environment
+    location: location
+    logAnalyticsCustomerId: monitoring.outputs.logAnalyticsCustomerId
+    logAnalyticsSharedKey: monitoring.outputs.logAnalyticsSharedKey
+    managedIdentityId: managedIdentity.outputs.id
+    keyVaultUrl: keyVault.outputs.keyVaultUrl
+    githubOrg: githubOrg
+    imageTag: imageTag
+    claudeModel: claudeModel
+    costCategoryTag: costCategoryTag
+  }
+  dependsOn: [
+    keyVaultRoleAssignment
+  ]
+}
 
+// 7. Logic App (Teams notifications)
+module logicApp 'modules/logicApp.bicep' = {
+  name: 'logicApp'
+  params: {
+    project: project
+    location: location
+    costCategoryTag: costCategoryTag
+  }
+}
+
+// 8. Function App (Timer + Queue triggers)
+module functionApp 'modules/functionApp.bicep' = {
+  name: 'functionApp'
+  params: {
+    project: project
+    environment: environment
+    location: location
+    managedIdentityId: managedIdentity.outputs.id
+    managedIdentityClientId: managedIdentity.outputs.clientId
+    keyVaultUrl: keyVault.outputs.keyVaultUrl
+    storageConnectionString: storage.outputs.connectionString
+    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
+    containerAppJobName: containerApp.outputs.jobName
+    costCategoryTag: costCategoryTag
+  }
+  dependsOn: [
+    keyVaultRoleAssignment
+  ]
+}
+
+// Outputs
+output managedIdentityClientId string = managedIdentity.outputs.clientId
+output keyVaultName string = keyVault.outputs.name
+output keyVaultUrl string = keyVault.outputs.keyVaultUrl
+output storageAccountName string = storage.outputs.name
+output containerAppJobName string = containerApp.outputs.jobName
+output functionAppName string = functionApp.outputs.name
+output logicAppName string = logicApp.outputs.name

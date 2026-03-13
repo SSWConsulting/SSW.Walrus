@@ -1,20 +1,22 @@
 version: '3.8'
 
 services:
-  csv-processor:
+  walrus-processor:
     build: .
-    ports:
-      - "8000:8000"
-    env_file:
-      - .env
+    environment:
+      - SURVEY_FILE=${SURVEY_FILE:-}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - SURGE_TOKEN=${SURGE_TOKEN:-}
+      - SURGE_LOGIN=${SURGE_LOGIN:-}
+      # For Azure mode (optional)
+      - SHAREPOINT_FILE_IDS=${SHAREPOINT_FILE_IDS:-}
+      - SURVEY_NAME=${SURVEY_NAME:-}
+      - SHAREPOINT_SITE_ID=${SHAREPOINT_SITE_ID:-}
+      - SHAREPOINT_DRIVE_ID=${SHAREPOINT_DRIVE_ID:-}
+      - GRAPH_CLIENT_ID=${GRAPH_CLIENT_ID:-}
+      - GRAPH_CLIENT_SECRET=${GRAPH_CLIENT_SECRET:-}
+      - GRAPH_TENANT_ID=${GRAPH_TENANT_ID:-}
+      - LOGIC_APP_URL=${LOGIC_APP_URL:-}
     volumes:
-      - ./outputs:/app/outputs
-      - ./temp:/app/temp
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
+      - ./surveys:/app/surveys
+      - ./downloads:/app/downloads

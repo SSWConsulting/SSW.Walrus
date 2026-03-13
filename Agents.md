@@ -2,7 +2,7 @@
 
 ## What This System Does
 
-When a user provides a CSV/XLSX survey export, the system runs 5 specialized AI analysis agents in parallel, consolidates their outputs, generates a multi-tab HTML dashboard, and deploys it to surge.sh.
+When a user provides a CSV/XLSX survey export, the system runs 4 specialized AI analysis agents in parallel, consolidates their outputs, generates a multi-tab HTML dashboard and PPTX slide deck, and deploys to surge.sh.
 
 ## Architecture at a Glance
 
@@ -13,14 +13,14 @@ Survey Export (CSV/XLSX)
   /process-survey skill
   ┌──────────────────────────────────────┐
   │ 1. Validate & classify columns       │
-  │ 2. Run 5 agents in parallel          │
+  │ 2. Run 4 agents in parallel          │
   │    ├─ quantitative-analyzer          │
   │    ├─ qualitative-analyzer           │
-  │    ├─ segment-analyzer               │
   │    ├─ sentiment-analyzer             │
   │    └─ red-flag-detector              │
   │ 3. Run consolidator                  │
   │ 4. Generate dashboard from template  │
+  │ 4.5 Generate PPTX slide deck        │
   │ 5. Deploy to surge.sh               │
   └──────────────────────────────────────┘
        │
@@ -33,18 +33,18 @@ Survey Export (CSV/XLSX)
 ```
 SSW.FatDigester9999/
 ├── .claude/
-│   ├── agents/                          # 6 analysis agent prompts
+│   ├── agents/                          # 5 analysis agent prompts
 │   │   ├── quantitative-analyzer.md     # Numeric/scale question analysis
 │   │   ├── qualitative-analyzer.md      # Free-text theme extraction
-│   │   ├── segment-analyzer.md          # Demographic cross-tabulation
 │   │   ├── sentiment-analyzer.md        # Emotional tone profiling
 │   │   ├── red-flag-detector.md         # Risk and warning detection
-│   │   └── consolidator.md              # Harmonization & deduplication
+│   │   └── consolidator.md              # Harmonization, people profiles, dedup
 │   └── skills/                          # User-facing skill definitions
 │       ├── process-survey/SKILL.md      # PRIMARY — full pipeline
 │       └── list-surveys/SKILL.md        # Utility — list processed surveys
 ├── templates/
-│   └── survey-dashboard.html            # SSW-branded dashboard template
+│   ├── survey-dashboard.html            # SSW-branded dashboard template
+│   └── generate-slides.py              # PPTX slide deck generator
 ├── surveys/                             # .gitignored — generated output
 │   └── {survey-name}/
 │       └── {YYYY-MM-DD}/
@@ -59,16 +59,15 @@ SSW.FatDigester9999/
 
 ## Analysis Agents
 
-All 6 agents live in `.claude/agents/`. The first 5 run **in parallel** against the survey data; the consolidator runs **after all 5 complete**.
+All 5 agents live in `.claude/agents/`. The first 4 run **in parallel** against the survey data; the consolidator runs **after all 4 complete**.
 
 | Agent | File | Input | Output | What It Does |
 |-------|------|-------|--------|-------------|
 | Quantitative Analyzer | `quantitative-analyzer.md` | Survey data | `quantitative.json` | Distributions, means, correlations, top/bottom scores, polarization detection |
 | Qualitative Analyzer | `qualitative-analyzer.md` | Survey data | `qualitative.json` | Theme extraction, representative quotes, score-text contradictions |
-| Segment Analyzer | `segment-analyzer.md` | Survey data | `segments.json` | Per-segment scores, gap analysis, at-risk groups, k-anonymity enforcement |
 | Sentiment Analyzer | `sentiment-analyzer.md` | Survey data | `sentiment.json` | Emotional profile, candor assessment, quant-qual alignment check |
 | Red Flag Detector | `red-flag-detector.md` | Survey data | `red-flags.json` | Attrition risks, toxic patterns, management blind spots, burnout signals |
-| **Consolidator** | `consolidator.md` | All 5 JSONs | **`consolidated.json`** | Cross-validation, topic deduplication, privacy enforcement, recommendations |
+| **Consolidator** | `consolidator.md` | All 4 JSONs | **`consolidated.json`** | Cross-validation, topic dedup, people profile assembly, recommendations |
 
 **`consolidated.json` is the single source of truth.** The dashboard is generated from it, never from raw agent outputs.
 
@@ -100,12 +99,12 @@ surveys/{survey-name}/
 │   ├── analysis/
 │   │   ├── quantitative.json           # Intermediate (agent output)
 │   │   ├── qualitative.json            # Intermediate
-│   │   ├── segments.json               # Intermediate
 │   │   ├── sentiment.json              # Intermediate
 │   │   ├── red-flags.json              # Intermediate
 │   │   └── consolidated.json           # Definitive — dashboard reads this
 │   └── dashboard/
-│       └── index.html                  # Final deliverable
+│       ├── index.html                  # Final deliverable (HTML dashboard)
+│       └── {survey-name}.pptx          # Slide deck for presentations
 ```
 
 ## Best Practices
@@ -120,8 +119,6 @@ surveys/{survey-name}/
 
 ### Data Handling
 
-**k-anonymity is a hard rule.** Never show segment aggregate data for groups smaller than 5 respondents. This is not a guideline — it's mandatory.
-
 **Email exclusion is absolute.** If the survey data contains email columns, they must be completely excluded from all analysis and output.
 
 **Quote attribution is standard.** All verbatim quotes must include the respondent's name. These are not anonymous surveys — responses are attributed.
@@ -135,7 +132,7 @@ surveys/{survey-name}/
 | Overview | Executive summary, key metrics, verdict, hard truths |
 | Responses | Per-question scores, distributions, skip rates |
 | Themes | Qualitative themes, emotional profile, quotes |
-| Segments | Demographic breakdowns, gap analysis, at-risk groups |
+| People | Individual respondent profiles, all their responses |
 | Insights & Actions | Red flags, recommendations, predictions |
 
 **Score decisively.** 7/10 is mediocre in surveys, not good. Real satisfaction starts at 8+. Don't let averages disguise reality.

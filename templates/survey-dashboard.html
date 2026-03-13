@@ -143,23 +143,16 @@
         .theme-card.theme-mixed { border-left-color: #F59E0B; }
         .theme-card.theme-neutral { border-left-color: #A1A1AA; }
 
-        /* Segment table styles */
-        .segment-table th {
-            background: #F4F4F5;
-            font-weight: 600;
-            text-align: left;
-            padding: 0.75rem 1rem;
-            font-size: 0.875rem;
-            color: #333333;
-            border-bottom: 2px solid #E4E4E7;
+        /* People card score inline */
+        .people-score-inline {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
         }
-        .segment-table td {
-            padding: 0.75rem 1rem;
-            font-size: 0.875rem;
-            border-bottom: 1px solid #F4F4F5;
-        }
-        .segment-table tr:hover td {
-            background: #FAFAFA;
+        .people-score-inline .score-bar {
+            width: 80px;
+            height: 8px;
         }
 
         /* Severity badges */
@@ -182,19 +175,6 @@
             background: #ECFDF5;
             color: #065F46;
             font-weight: 500;
-        }
-
-        /* k-anonymity warning banner */
-        .k-anonymity-banner {
-            background: #FEF3C7;
-            border: 1px solid #F59E0B;
-            border-radius: 8px;
-            padding: 0.75rem 1rem;
-            font-size: 0.875rem;
-            color: #92400E;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
 
         /* Radar chart container */
@@ -281,39 +261,11 @@
             border-bottom: 1px solid #F4F4F5;
         }
 
-        /* Heatmap interactive styles */
-        .heatmap-cell {
-            position: relative;
-            cursor: pointer;
-            transition: filter 0.15s ease;
-        }
-        .heatmap-cell:hover {
-            outline: 2px solid #333333;
-            outline-offset: -1px;
-            filter: brightness(0.95);
-        }
-        .heatmap-tooltip {
-            position: absolute;
-            bottom: calc(100% + 8px);
-            left: 50%;
-            transform: translateX(-50%);
-            background: #333333;
-            color: white;
-            padding: 0.5rem 0.75rem;
-            border-radius: 6px;
+        /* People card response question label */
+        .people-question-label {
             font-size: 0.75rem;
-            white-space: nowrap;
-            z-index: 50;
-            pointer-events: none;
-        }
-        .heatmap-tooltip::after {
-            content: '';
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            border: 5px solid transparent;
-            border-top-color: #333333;
+            color: #71717A;
+            margin-bottom: 0.125rem;
         }
 
         /* Expand/collapse toolbar */
@@ -483,10 +435,10 @@
                     class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
                 💬 Themes
             </button>
-            <button @click="activeTab = 'segments'"
-                    :class="activeTab === 'segments' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
+            <button @click="activeTab = 'people'"
+                    :class="activeTab === 'people' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
                     class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                👥 Segments
+                👤 People
             </button>
             <button @click="activeTab = 'insights'"
                     :class="activeTab === 'insights' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
@@ -496,7 +448,7 @@
         </nav>
 
         <!-- Search & Expand Toolbar (visible on Responses and Themes tabs) -->
-        <div x-show="activeTab === 'responses' || activeTab === 'themes'" x-cloak class="search-toolbar no-print">
+        <div x-show="activeTab === 'responses' || activeTab === 'themes' || activeTab === 'people'" x-cloak class="search-toolbar no-print">
             <input type="text" x-model="searchQuery" placeholder="Search questions, themes, quotes..." aria-label="Search dashboard content">
             <button x-show="searchQuery.length > 0" @click="searchQuery = ''" title="Clear search">&times; Clear</button>
             <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
@@ -717,60 +669,63 @@
                 </section>
             </div>
 
-            <!-- Segments Tab -->
-            <div x-show="activeTab === 'segments'" x-cloak>
-                <!-- k-Anonymity Notice -->
-                {{K_ANONYMITY_BANNER}}
+            <!-- People Tab -->
+            <!--
+                 Shows individual respondent profiles. Click to expand and see all their responses.
+                 Data source: consolidated.json → people.respondents[]
 
-                <!-- Segment Comparison -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Segment Comparison
-                    </h2>
-                    {{SEGMENT_COMPARISON}}
-                </section>
+                 Each person card MUST follow this Alpine.js pattern:
 
-                <!-- Cross-Tab Heatmap (Interactive with Tooltips) -->
-                <!--
-                     Each heatmap cell MUST follow this Alpine.js pattern:
-
-                     <td class="heatmap-cell" x-data="{ hover: false }"
-                         @mouseenter="hover = true" @mouseleave="hover = false"
-                         style="background-color: {color}">
-                       <span class="font-semibold text-sm">{value}</span>
-                       <div x-show="hover" x-cloak class="heatmap-tooltip">
-                         <div class="font-semibold">{segment} × {question}</div>
-                         <div>Score: {value} | n={sampleSize}</div>
+                 <div x-data="{ open: false }"
+                      @expand-all.window="open = true"
+                      @collapse-all.window="open = false"
+                      x-show="!searchQuery || 'LOWERCASE_NAME'.includes(searchQuery.toLowerCase())"
+                      class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">
+                   <div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">
+                     <div class="flex items-center gap-3 flex-1">
+                       <div class="w-9 h-9 rounded-full bg-ssw-gray-100 flex items-center justify-center text-ssw-charcoal font-bold text-sm">
+                         {initials}
                        </div>
-                     </td>
+                       <div class="flex-1">
+                         <p class="font-semibold text-ssw-charcoal">{name}</p>
+                         <div class="flex items-center gap-3 mt-1">
+                           <span class="text-xs text-ssw-gray-500">Avg: {averageScore}/{scale}</span>
+                           <span class="text-xs text-ssw-gray-500">{responseCount} responses</span>
+                           <span class="flag-badge" x-show="hasFlags">{flag}</span>
+                         </div>
+                       </div>
+                       <div class="score-bar max-w-[120px] flex-shrink-0">
+                         <div class="score-bar-fill score-{high|medium|low}" style="width: {pct}%"></div>
+                       </div>
+                     </div>
+                     <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
+                   </div>
+                   <template x-if="open">
+                     <div class="question-card-body p-4">
+                       <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">Numeric Responses</h4>
+                       <div class="response-list mb-4">
+                         ...numeric response items with question + score bar...
+                       </div>
+                       <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">Text Responses</h4>
+                       <div class="response-list">
+                         ...text response items with question + full text...
+                       </div>
+                     </div>
+                   </template>
+                 </div>
 
-                     Suppressed cells: show "—" with a tooltip explaining suppression.
-                -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Cross-Tabulation Heatmap
-                    </h2>
-                    <div class="max-w-4xl mx-auto">
-                        <canvas id="heatmapChart"></canvas>
-                    </div>
-                    {{HEATMAP_TABLE}}
-                </section>
-
-                <!-- Gap Analysis -->
-                <section class="bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6 mb-6">
-                    <h2 class="text-lg text-ssw-red-700 mb-4 font-bold">Gap Analysis — Where Experiences Diverge</h2>
-                    {{GAP_ANALYSIS}}
-                </section>
-
-                <!-- At-Risk Segments -->
+                 SEARCH INDEX: Bake respondent name (lowercase) into x-show expression.
+            -->
+            <div x-show="activeTab === 'people'" x-cloak>
                 <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2 animate-pulse"></span>
-                        At-Risk Segments
+                    <h2 class="text-lg text-ssw-charcoal mb-2 flex items-center">
+                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
+                        Individual Respondent Profiles
                     </h2>
-                    {{AT_RISK_SEGMENTS}}
+                    <p class="text-sm text-ssw-gray-500 mb-6">Click any person to see all their responses. Search by name above.</p>
+                    <div class="space-y-3">
+                        {{PEOPLE_CARDS}}
+                    </div>
                 </section>
             </div>
 

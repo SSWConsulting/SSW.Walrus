@@ -62,10 +62,9 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 |-------|---------|--------|
 | `quantitative-analyzer` | Distributions, means, correlations, top/bottom scores | `analysis/quantitative.json` |
 | `qualitative-analyzer` | Theme extraction, representative quotes, contradictions | `analysis/qualitative.json` |
-| `segment-analyzer` | Demographic cross-tabulation, gap analysis, at-risk groups | `analysis/segments.json` |
 | `sentiment-analyzer` | Emotional tone, candor assessment, quant-qual alignment | `analysis/sentiment.json` |
 | `red-flag-detector` | Attrition risks, toxic patterns, burnout, blind spots | `analysis/red-flags.json` |
-| **`consolidator`** | **Harmonize all outputs, ensure consistency & data handling** | **`analysis/consolidated.json`** |
+| **`consolidator`** | **Harmonize all outputs, build people profiles, ensure consistency** | **`analysis/consolidated.json`** |
 
 ### Workflow
 
@@ -77,16 +76,17 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                    2. PARALLEL ANALYSIS                          │
-│  ┌──────────┐ ┌────────────┐ ┌──────────┐ ┌──────────┐ ┌──────┐│
-│  │Quantitav.│ │Qualitative │ │ Segments │ │Sentiment │ │RedFlg││
-│  └────┬─────┘ └─────┬──────┘ └────┬─────┘ └────┬─────┘ └──┬───┘│
-└───────┼─────────────┼─────────────┼────────────┼──────────┼────┘
-        ↓             ↓             ↓            ↓          ↓
+│  ┌──────────┐ ┌────────────┐ ┌──────────┐ ┌──────────────────┐ │
+│  │Quantitav.│ │Qualitative │ │Sentiment │ │Red Flag Detector │ │
+│  └────┬─────┘ └─────┬──────┘ └────┬─────┘ └────────┬─────────┘ │
+└───────┼─────────────┼────────────┼──────────────────┼───────────┘
+        ↓             ↓            ↓                  ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                    3. CONSOLIDATION                              │
 │  • Cross-validate metrics between agents                        │
 │  • Topic fingerprinting and deduplication                       │
-│  • Data handling (k-anonymity, email exclusion, attribution)    │
+│  • People profile assembly (pivot per-question → per-person)    │
+│  • Data handling (email exclusion, attribution)                 │
 │  • Content assignment to dashboard tabs                         │
 │  • Recommendation synthesis                                     │
 └─────────────────────────────────────────────────────────────────┘
@@ -98,6 +98,11 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
+│                  4.5 GENERATE SLIDE DECK                        │
+│  python3 templates/generate-slides.py → {name}.pptx            │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
 │                      5. DEPLOY                                   │
 │  surge . {survey-name}-{date}.surge.sh                          │
 └─────────────────────────────────────────────────────────────────┘
@@ -106,16 +111,12 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 ## Data Handling Rules
 
 ### Attribution
+- These surveys are **compulsory** — 100% response rate, no self-selection bias
 - Survey responses are **attributed by name** — respondents are identified on their quotes and notable answers
 - **Email addresses** in data MUST be **excluded** from ALL outputs (visual noise, not useful)
 - Verbatim quotes MUST include the **respondent's name** for attribution and the **question they were answering** for context
 - Individual responses are highlighted when notable, interesting, or nonstandard
-
-### k-Anonymity (k=5)
-- Segments with **fewer than 5 respondents** MUST be suppressed in **aggregate statistics**
-- Suppressed segments can be merged with related segments (e.g., "Marketing" merged with "Sales")
-- Flag all suppressions in the output
-- k-anonymity applies to segment-level stats, not to individual quotes (which are attributed)
+- The People tab shows per-respondent profiles with all their answers in one view
 
 ## Focus Prompt Handling
 
@@ -164,10 +165,10 @@ Each tab answers ONE question. Before writing content for any section, ask: "Whi
 | **Overview** | "What are the top findings and what must leadership act on?" | Executive summary, key metrics, verdict, hard truths |
 | **Responses** | "How did each question score and what do the distributions look like?" | Per-question scores, distributions, skip rates, correlations |
 | **Themes** | "What are people saying in their own words and how do they feel?" | Qualitative themes, emotional profile, sentiment, quotes |
-| **Segments** | "How do different groups experience this differently?" | Demographic breakdowns, gaps, at-risk groups, heatmap |
+| **People** | "What did each individual person say?" | Per-respondent profiles, individual response views |
 | **Insights & Actions** | "What should keep leadership up at night and what should they DO?" | Red flags, risk radar, recommendations, predictions |
 
-For every piece of content, find the ONE tab whose question it answers best. If it could fit two tabs, pick the MORE SPECIFIC one (e.g., a segment issue → Segments, not Overview). If you need to reference content from another tab, write "(See Segments tab)" instead of repeating it.
+For every piece of content, find the ONE tab whose question it answers best. If it could fit two tabs, pick the MORE SPECIFIC one (e.g., a person-specific insight → People, not Overview). If you need to reference content from another tab, write "(See People tab)" instead of repeating it.
 
 **Duplication anti-patterns (MUST AVOID):**
 
@@ -175,8 +176,8 @@ A single topic (e.g., "career development frustration") must NOT appear as:
 - Overview bullet: "Career development scores lowest" ← OK (factual)
 - Responses score: "Career dev 2.9/5" ← OK (it's a score)
 - Themes theme card: "Growth stagnation" ← DUPLICATE — this is the same topic
-- Segments at-risk: "Engineering 2-4yr — career gap" ← OK (segment-specific)
-- Insights red flag: "Attrition risk from career gap" ← DUPLICATE — merge with the insight
+- Insights red flag: "Attrition risk from career gap" ← OK (predictive risk)
+- People: Individual scores are fine — People tab shows raw data, not analysis
 
 **The "same topic" test:** If two items are about the same issue/concern, they are the SAME TOPIC regardless of the angle. Merge them.
 
@@ -184,7 +185,6 @@ A single topic (e.g., "career development frustration") must NOT appear as:
 - Responses are attributed to respondents by name
 - No email addresses in any output
 - Quotes include respondent name for attribution and the question being answered for context
-- Segment data suppressed for groups < 5 respondents (k-anonymity)
 
 **Styling rules:**
 - In warning/alert sections (e.g. Hard Truths, Red Flags), keep body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
@@ -215,7 +215,7 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
 - **Overall Verdict** — Grade (A-F) with one-sentence summary. Dark gradient banner style.
 - **Focus Area Summary** (if focus prompt provided) — Dedicated card summarizing focus-area findings from all agents.
 - **Standout Responses** — Notable individual answers worth highlighting. Each card shows respondent name, question answered, blockquote response, and a badge explaining why it stands out. Uses `.standout-card` styling with `.standout-badge` for the reason.
-- **Hard Truths** — **MAX 2 items, each max 2 sentences.** Punchy and direct. ONLY high-level synthesis that genuinely doesn't fit in Insights, Themes, or Segments.
+- **Hard Truths** — **MAX 2 items, each max 2 sentences.** Punchy and direct. ONLY high-level synthesis that genuinely doesn't fit in Insights, Themes, or People.
 
 ### Tab 2: Responses
 - **Search + Expand Toolbar** — Visible when Responses tab is active. Contains search input (`x-model="searchQuery"`), clear button, "Expand All" and "Collapse All" buttons that dispatch Alpine.js events.
@@ -254,12 +254,16 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
   - Cards listen to `@expand-all.window` and `@collapse-all.window` events
 - **Notable Quotes** — Curated attributed quotes, each showing the question being answered, verbatim quote, respondent name, and theme
 
-### Tab 4: Segments
-- **k-Anonymity Warning Banner** (if any segments were suppressed)
-- **Segment Comparison** — Table or card layout showing per-segment scores
-- **Cross-Tabulation Heatmap** — Interactive color-coded table (green=high, amber=medium, red=low) with suppressed cells marked. Each cell uses Alpine.js `x-data="{ hover: false }"` with mouseenter/mouseleave to show a tooltip displaying segment name, question, score value, and sample size. Suppressed cells show "—" with a tooltip explaining the suppression.
-- **Gap Analysis** — Where experiences diverge most. Gap classification: < 0.3 negligible, 0.3-0.7 notable, 0.7-1.0 concerning, > 1.0 critical
-- **At-Risk Segments** — Groups needing immediate attention, with risk level badge, key problem areas, and recommended intervention
+### Tab 4: People
+- **Search** — Filter by respondent name using the shared search toolbar
+- **Respondent Cards** — Interactive expandable cards (Alpine.js, same pattern as question cards):
+  - **Collapsed state:** Name (with initials avatar), average score across numeric questions, response count, notable flags (standout, highest/lowest scorer, etc.), score bar
+  - **Expanded state** (uses `<template x-if="open">` for DOM efficiency):
+    - **Numeric Responses** — All their numeric answers with question text, score bar per question, grouped by survey section if multi-survey
+    - **Text Responses** — All their free-text answers with question text, full response text, grouped by survey section if multi-survey
+  - Cards listen to `@expand-all.window` and `@collapse-all.window` events
+  - Search filtering via respondent name in `x-show`
+- Data source: `consolidated.json → people.respondents[]` (assembled by consolidator from per-question individual responses)
 
 ### Tab 5: Insights & Actions
 - **Red Flags** — Critical warnings with severity badges (critical/high/moderate)
@@ -280,12 +284,12 @@ surveys/{survey-name}/
 │   ├── analysis/                     # Analysis outputs
 │   │   ├── quantitative.json         # Raw agent output
 │   │   ├── qualitative.json          # Raw agent output
-│   │   ├── segments.json             # Raw agent output
 │   │   ├── sentiment.json            # Raw agent output
 │   │   ├── red-flags.json            # Raw agent output
 │   │   └── consolidated.json         # ← HARMONIZED - USE THIS FOR DASHBOARD
 │   └── dashboard/                    # Survey dashboard
-│       └── index.html                # THE DELIVERABLE
+│       ├── index.html                # THE DELIVERABLE (HTML dashboard)
+│       └── {survey-name}.pptx        # Slide deck for presentations
 ```
 
 ## Consolidated JSON Schema (Critical Field Names)
@@ -302,6 +306,8 @@ The consolidator MUST produce `consolidated.json` using these exact field names.
 | **Theme Quotes** | `themes.themes[].allQuotes[]` | `name` | `text` |
 | **Notable Quotes** | `themes.notableQuotes[]` | `name` | `text` |
 | **Standout Responses** | `overview.standoutResponses[]` | `name` | `response` |
+| **People Numeric** | `people.respondents[].numericResponses[]` | — | `value` |
+| **People Text** | `people.respondents[].textResponses[]` | — | `text` |
 
 **All quote objects** (`allQuotes`, `notableQuotes`, `standoutResponses`) MUST include a `question` field containing the question text the respondent was answering. This provides essential context for readers.
 
@@ -316,10 +322,10 @@ The consolidator MUST produce `consolidated.json` using these exact field names.
 1. Read the template file first: `templates/survey-dashboard.html`
 2. The template contains:
    - SSW brand colors and styling
-   - Tab navigation (Overview, Responses, Themes, Segments, Insights & Actions)
-   - Placeholder variables like `{{SURVEY_NAME}}`, `{{DATE}}`, `{{EXECUTIVE_SUMMARY}}`, etc.
+   - Tab navigation (Overview, Responses, Themes, People, Insights & Actions)
+   - Placeholder variables like `{{SURVEY_NAME}}`, `{{DATE}}`, `{{EXECUTIVE_SUMMARY}}`, `{{PEOPLE_CARDS}}`, etc.
    - Chart.js setup with SSW colors
-   - Score bar, theme card, segment table, severity badge CSS styles
+   - Score bar, theme card, people card, severity badge CSS styles
 3. Replace ALL placeholders with actual content from `consolidated.json`
 4. Save the final HTML to `surveys/{survey-name}/{date}/dashboard/index.html`
 
@@ -339,10 +345,33 @@ The template includes containers for charts. Populate the `{{CHART_SCRIPTS}}` pl
 - Values as percentages (0-100)
 - SSW red fill with transparency
 
-**Heatmap** (`heatmapChart`):
-- Use an HTML table with colored cells (or Chart.js matrix plugin)
-- Rows: Questions, Columns: Segments
-- Color scale: green (high) → amber (mid) → red (low)
+## Slide Deck Generation
+
+After generating the dashboard, generate a PPTX slide deck for leadership presentations:
+
+```bash
+python3 templates/generate-slides.py \
+  surveys/{name}/{date}/analysis/consolidated.json \
+  surveys/{name}/{date}/dashboard/{name}.pptx
+```
+
+The script reads `consolidated.json` and produces a branded PowerPoint matching the depth of the HTML dashboard:
+1. Title Slide — Survey name, date, response count, "Compulsory survey"
+2. Executive Summary — Verdict grade + bullet points
+3. Key Metrics — Top-line numbers as cards
+4. Focus Area (if applicable)
+5. Top & Bottom Scores — Best/worst scoring questions with flags
+6. All Question Scores — Paginated breakdown of every question with commentary
+7. Themes & Sentiment — Themes with quotes, emotional temperature, key insight (paginated if many)
+8. Emotional Profile — Bar chart of emotional breakdown with candor/dissonance stats
+9. Notable Quotes — Attributed quotes with question context
+10. Standout Responses — Individual answers worth highlighting
+11. Cross-Survey Patterns (if multi-survey)
+12. Red Flags — All flags with evidence, predictions, urgency (paginated if many)
+13. Recommendations — One slide per tier (immediate/short-term/strategic) with owner, rationale, success metric
+14. Hard Truths (if any)
+
+**SSW branding:** Red `#CC4141`, charcoal `#333333`, white backgrounds, Calibri font.
 
 ## Deployment
 
@@ -373,5 +402,5 @@ After generating the dashboard, deploy it to surge.sh:
 - Skip the deployment
 - Rush through the analysis — THIS IS IMPORTANT
 - Show email addresses in any output
-- Show segment data for groups < 5 respondents
+- Skip slide deck generation
 - Add extra text after DEPLOYED_URL (processor parses this line)

@@ -1,20 +1,40 @@
-FROM python:3.11-slim
+FROM node:20-slim
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    curl \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python-pptx for slide generation
+RUN python3 -m venv /opt/venv && \
+    /opt/venv/bin/pip install --no-cache-dir python-pptx && \
+    ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
+
+# Install Claude Code CLI
+RUN curl -fsSL https://claude.ai/install.sh | bash
+ENV PATH="/root/.claude/bin:${PATH}"
+
+# Install surge globally
+RUN npm install -g surge@0.23.1
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    && rm -rf /var/lib/apt/lists/*
+# Copy package files and install dependencies
+COPY package.json ./
+RUN npm install --production
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy application files
+COPY processor.js download-survey.js upload-results.js send-teams-notification.js entrypoint.sh ./
+COPY templates/ ./templates/
+COPY .claude/ ./.claude/
+COPY CLAUDE.md Agents.md ./
 
-COPY . .
+# Ensure entrypoint is executable
+RUN chmod +x entrypoint.sh
 
-RUN mkdir -p outputs outputs/charts temp
-
-EXPOSE 8000
-
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
+ENTRYPOINT ["./entrypoint.sh"]

@@ -36,11 +36,12 @@ When multiple files are provided, each file is treated as a separate survey "sec
 
 1. ✅ Validates and parses the input file (CSV or XLSX)
 2. ✅ Detects question types (numeric, free-text, demographic)
-3. ✅ Orchestrates **5 specialized analysis agents** in parallel
+3. ✅ Orchestrates **4 specialized analysis agents** in parallel
 4. ✅ Runs **consolidation** to ensure consistency and deduplication
 5. ✅ Creates a **multi-tab HTML dashboard** with rich insights
-6. ✅ Deploys to **surge.sh**
-7. ✅ Returns a **public URL**
+6. ✅ Generates a **PPTX slide deck** for presentations
+7. ✅ Deploys to **surge.sh**
+8. ✅ Returns a **public URL**
 
 ## NEVER DO
 
@@ -48,8 +49,8 @@ When multiple files are provided, each file is treated as a separate survey "sec
 - ❌ Skip any analysis phase
 - ❌ Skip the consolidation step
 - ❌ Generate a simple single-page summary
+- ❌ Skip the slide deck generation
 - ❌ Skip the deployment
-- ❌ Show segment data for groups with fewer than 5 respondents
 - ❌ Include email addresses in any output
 
 ## Pipeline Steps
@@ -101,12 +102,12 @@ When multiple files are provided, each file is treated as a separate survey "sec
    ├── analysis/
    │   ├── quantitative.json
    │   ├── qualitative.json
-   │   ├── segments.json
    │   ├── sentiment.json
    │   ├── red-flags.json
    │   └── consolidated.json
    └── dashboard/
-       └── index.html
+       ├── index.html
+       └── {survey-name}.pptx
    ```
 
 ### Step 2: Run Analysis Agents (IN PARALLEL)
@@ -129,19 +130,13 @@ Pass each agent:
    - Contradiction detection (score vs. text)
    - Language pattern analysis
 
-3. **segment-analyzer** → `analysis/segments.json`
-   - Per-segment score comparison (by team, tenure, role, etc.)
-   - Gap analysis between segments
-   - At-risk group identification
-   - Graceful degradation if no demographics exist
-
-4. **sentiment-analyzer** → `analysis/sentiment.json`
+3. **sentiment-analyzer** → `analysis/sentiment.json`
    - Emotional profile (frustration, hope, cynicism, etc.)
    - Candor assessment
    - Quantitative-qualitative alignment check
    - Sentiment drivers
 
-5. **red-flag-detector** → `analysis/red-flags.json`
+4. **red-flag-detector** → `analysis/red-flags.json`
    - Attrition risk signals
    - Toxic pattern detection
    - Management blind spots
@@ -155,9 +150,10 @@ Run the **consolidator** agent to:
 1. **Cross-validate** — Resolve metric conflicts between agents
 2. **Topic fingerprint** — Identify same topics across agents, merge into single entries
 3. **Deduplicate** — Each finding appears in exactly ONE dashboard tab
-4. **Data handling** — Verify k-anonymity, exclude emails, preserve attribution
-5. **Amplify** — Rank findings by importance
-6. **Synthesize** — Create executive summary and recommendations
+4. **People assembly** — Build per-respondent profiles from per-question data
+5. **Data handling** — Exclude emails, preserve attribution
+6. **Amplify** — Rank findings by importance
+7. **Synthesize** — Create executive summary and recommendations
 
 Output: `analysis/consolidated.json`
 
@@ -188,12 +184,11 @@ Populate all placeholders using **consolidated.json** (NOT raw agent outputs).
 - Theme cards with frequency, sentiment, quotes (each quote showing the question being answered)
 - Notable quotes section (each quote showing the question being answered, respondent name, and theme)
 
-#### Tab 4: Segments
-- k-anonymity warning banner (if segments were suppressed)
-- Segment comparison table
-- Cross-tabulation heatmap
-- Gap analysis (where experiences diverge most)
-- At-risk segments with risk level and intervention
+#### Tab 4: People
+- Searchable list of respondents (shared search toolbar)
+- Expandable person cards (same Alpine.js pattern as question cards)
+- Each card shows: name, average score, response count, notable flags
+- Expanded view: all numeric responses with score bars + all text responses, grouped by survey section
 
 #### Tab 5: Insights & Actions
 - Red flags (critical warnings)
@@ -326,20 +321,59 @@ For each theme in `themes`:
 
 Use single-column layout (`space-y-4`) — expandable cards need full width for quote lists.
 
-##### Heatmap Cells with Tooltips
+##### People Cards (`{{PEOPLE_CARDS}}`)
 
-Each `<td>` in the heatmap table:
+For each respondent in `people.respondents`:
 
 ```html
-<td class="heatmap-cell" x-data="{ hover: false }"
-    @mouseenter="hover = true" @mouseleave="hover = false"
-    style="background-color: {colorFromScore}">
-  <span class="font-semibold text-sm">{value}</span>
-  <div x-show="hover" x-cloak class="heatmap-tooltip">
-    <div class="font-semibold">{segment} × {question}</div>
-    <div>Score: {value} | n={sampleSize}</div>
+<div x-data="{ open: false }"
+     @expand-all.window="open = true"
+     @collapse-all.window="open = false"
+     x-show="!searchQuery || 'LOWERCASE_NAME'.includes(searchQuery.toLowerCase())"
+     class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">
+  <div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">
+    <div class="flex items-center gap-3 flex-1">
+      <div class="w-9 h-9 rounded-full bg-ssw-gray-100 flex items-center justify-center text-ssw-charcoal font-bold text-sm">
+        {initials}
+      </div>
+      <div class="flex-1">
+        <p class="font-semibold text-ssw-charcoal">{name}</p>
+        <div class="flex items-center gap-3 mt-1">
+          <span class="text-xs text-ssw-gray-500">Avg: {averageScore}/{scale}</span>
+          <span class="text-xs text-ssw-gray-500">{responseCount} responses</span>
+          <span class="flag-badge">{flag}</span>
+        </div>
+      </div>
+      <div class="score-bar max-w-[120px] flex-shrink-0">
+        <div class="score-bar-fill score-{level}" style="width: {pct}%"></div>
+      </div>
+    </div>
+    <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
   </div>
-</td>
+  <template x-if="open">
+    <div class="question-card-body p-4">
+      <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">Numeric Responses</h4>
+      <div class="response-list mb-4">
+        <div class="response-item">
+          <div class="flex items-center justify-between">
+            <span class="text-ssw-gray-600 text-xs flex-1">{question}</span>
+            <div class="flex items-center gap-2">
+              <div class="score-bar w-16"><div class="score-bar-fill score-{level}" style="width: {pct}%"></div></div>
+              <span class="text-xs font-bold w-8 text-right">{value}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">Text Responses</h4>
+      <div class="response-list">
+        <div class="response-item">
+          <p class="text-xs text-ssw-gray-400 mb-0.5">{question}</p>
+          <p class="text-ssw-gray-600 text-sm">{text}</p>
+        </div>
+      </div>
+    </div>
+  </template>
+</div>
 ```
 
 ##### Standout Response Cards (`{{STANDOUT_RESPONSES}}`)
@@ -361,6 +395,18 @@ Each `<td>` in the heatmap table:
 ```
 
 Save to: `surveys/{survey-name}/{date}/dashboard/index.html`
+
+### Step 4.5: Generate Slide Deck
+
+Generate a PPTX slide deck for leadership presentations:
+
+```bash
+python3 templates/generate-slides.py \
+  surveys/{survey-name}/{date}/analysis/consolidated.json \
+  surveys/{survey-name}/{date}/dashboard/{survey-name}.pptx
+```
+
+This produces a branded PowerPoint alongside the HTML dashboard. If the script fails (e.g., missing `python-pptx`), install it with `pip3 install python-pptx` and retry.
 
 ### Step 5: Deploy to Surge.sh
 
@@ -387,25 +433,25 @@ Then provide a summary:
   - Surveys: {N} survey file(s) processed           # Multi-survey mode
   - Quantitative: {N} numeric questions analyzed
   - Qualitative: {N} themes extracted from {N} text responses
-  - Segments: {N} demographic dimensions, {N} at-risk groups
+  - People: {N} respondent profiles assembled
   - Sentiment: Emotional spectrum score {X}
   - Red Flags: {N} critical, {N} warning, {N} watch
 
 ✓ Consolidation:
   - {N} topics deduplicated
   - {N} conflicts resolved
-  - Data handling: {N} segments suppressed (k-anonymity)
   - Quality score: {N}/100
 
 ✓ Dashboard: surveys/{survey-name}/{date}/dashboard/index.html
+✓ Slide deck: surveys/{survey-name}/{date}/dashboard/{survey-name}.pptx
 ✓ Deployed to: https://{deploy-url}
 ```
 
 ## Data Handling Rules
 
-1. **Attributed by default** — Responses are attributed to respondents by name
-2. **Exclude email columns** — Strip from all analysis and output (visual noise)
-3. **k-Anonymity (k=5)** — Never show segment aggregate data for groups < 5 respondents
+1. **Compulsory surveys** — 100% response rate, no self-selection bias
+2. **Attributed by default** — Responses are attributed to respondents by name
+3. **Exclude email columns** — Strip from all analysis and output (visual noise)
 4. **Attribute quotes** — Include respondent name AND the question being answered on all verbatim quotes
 5. **Highlight standout responses** — Call out interesting, insightful, contrarian, or nonstandard individual answers by name, with question context
 6. **Name column preserved** — The respondent name column is used for attribution throughout the dashboard

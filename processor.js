@@ -62,18 +62,25 @@ async function main() {
     const localPath = await downloadInbox(STORAGE_ACCOUNT, credential, INBOX_BLOB, fileName);
     console.log(`[processor] Downloaded: ${fileName} → ${localPath}`);
 
-    // 2. Run Claude Code to process the survey (generates + deploys the dashboard)
+    // 2. Run Claude Code: analysis + consolidation + dashboard (phase 1)
     console.log('[processor] Running Claude Code /process-survey...');
     const model = CLAUDE_MODEL || 'claude-sonnet-4-6';
-    const claudeOutput = await runClaudeCode(localPath, model);
+    const phase1 = await runClaude(`/process-survey ${localPath}`, model);
+    let dashboardUrl = extractDeployedUrl(phase1);
 
-    // 3. Extract DEPLOYED_URL from Claude output
-    const deployedUrlMatch = claudeOutput.match(/^DEPLOYED_URL=(.+)$/m);
-    const dashboardUrl = deployedUrlMatch ? deployedUrlMatch[1].trim() : null;
+    // 2b. Phase 2 — large surveys can exhaust the first run's context before the
+    // dashboard is generated. If no DEPLOYED_URL came back, run a focused second
+    // pass whose only job is to finish + deploy from the analysis already on disk.
+    if (!dashboardUrl) {
+      console.log('[processor] No dashboard from phase 1 — running dedicated dashboard phase...');
+      const phase2 = await runClaude(dashboardPhasePrompt(surveyName), model);
+      dashboardUrl = extractDeployedUrl(phase2);
+    }
+
     if (dashboardUrl) {
       console.log(`[processor] Dashboard deployed: ${dashboardUrl}`);
     } else {
-      console.warn('[processor] Warning: Could not extract DEPLOYED_URL from output');
+      console.warn('[processor] Warning: Could not extract DEPLOYED_URL after both phases');
     }
 
     // 4. Upload the generated PPTX to the results container (for Flow B to attach)
@@ -139,12 +146,33 @@ async function enqueueDone(account, credential, payload) {
   await service.getQueueClient(DONE_QUEUE).sendMessage(JSON.stringify(payload));
 }
 
-function runClaudeCode(filePath, model) {
+function extractDeployedUrl(output) {
+  const m = output.match(/^DEPLOYED_URL=(.+)$/m);
+  return m ? m[1].trim() : null;
+}
+
+// Phase-2 prompt: finish delivery from the analysis already written to disk,
+// without re-running the four analysis agents. Used when phase 1 ran out of
+// context before generating the dashboard (large surveys).
+function dashboardPhasePrompt(surveyName) {
+  return [
+    `The survey analysis for "${surveyName}" has already run this session.`,
+    `Find its working folder: ls -d surveys/${surveyName}/*/  (there is one dated folder).`,
+    `Do ONLY the delivery steps from CLAUDE.md — do NOT re-run the four analysis agents:`,
+    `1. If analysis/consolidated.json is missing in that folder, run the consolidator from the four analysis/*.json files and write consolidated.json.`,
+    `2. Read templates/survey-dashboard.html and analysis/consolidated.json, generate the full multi-tab dashboard following CLAUDE.md's tab, field-name and styling rules exactly, and save it to <folder>/dashboard/index.html.`,
+    `3. Generate the deck: python3 templates/generate-slides.py <folder>/analysis/consolidated.json <folder>/dashboard/${surveyName}.pptx`,
+    `4. Deploy: node upload-dashboard.js --survey ${surveyName} --dir <folder>/dashboard`,
+    `5. Output the DEPLOYED_URL=... line exactly as printed by upload-dashboard.js, alone on its own line.`,
+  ].join('\n');
+}
+
+function runClaude(promptText, model) {
   return new Promise((resolve, reject) => {
     // Stream JSON so each step (sub-agent spawn, tool call) is visible in the
     // container logs. stream-json requires --verbose in print mode.
     const args = [
-      '-p', `/process-survey ${filePath}`,
+      '-p', promptText,
       '--model', model,
       '--dangerously-skip-permissions',
       '--output-format', 'stream-json',

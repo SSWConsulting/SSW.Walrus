@@ -125,23 +125,22 @@ Pass each agent:
    - Response quality assessment
 
 2. **qualitative-analyzer** → `analysis/qualitative.json`
-   - Theme extraction from free-text responses
-   - Representative and outlier quotes
-   - Contradiction detection (score vs. text)
-   - Language pattern analysis
+   - Topic opinions & experiences grouped into themes
+   - Representative + contrarian quotes (attributed)
+   - Use-cases — where the tool/practice shines vs struggles
+   - Standout takes
 
 3. **sentiment-analyzer** → `analysis/sentiment.json`
-   - Emotional profile (frustration, hope, cynicism, etc.)
-   - Candor assessment
-   - Quantitative-qualitative alignment check
-   - Sentiment drivers
+   - Team stance on the topic (enthusiasm, pragmatism, curiosity, skepticism…)
+   - Adoption depth (casual vs daily-driver vs power-user)
+   - Opinion ↔ rating alignment
 
 4. **red-flag-detector** → `analysis/red-flags.json`
-   - Attrition risk signals
-   - Toxic pattern detection
-   - Management blind spots
-   - Burnout signals
-   - Compliance concerns
+   - Skeptics & dissent worth hearing
+   - Adoption gaps (where uptake is thin)
+   - Content / poll issues (weak video/rule, confusing questions)
+   - Blockers (scrum side-signal)
+   - Recommendations
 
 ### Step 3: CONSOLIDATION (Critical Quality Step)
 
@@ -179,8 +178,8 @@ Populate all placeholders using **consolidated.json** (NOT raw agent outputs).
   - Flags (bimodal, below benchmark, etc.)
 
 #### Tab 3: Themes
-- Emotional temperature banner
-- Emotional profile radar chart (Chart.js)
+- Topic stance banner
+- Stance profile radar chart (Chart.js)
 - Theme cards with frequency, sentiment, quotes (each quote showing the question being answered)
 - Notable quotes section (each quote showing the question being answered, respondent name, and theme)
 
@@ -191,10 +190,9 @@ Populate all placeholders using **consolidated.json** (NOT raw agent outputs).
 - Expanded view: all numeric responses with score bars + all text responses, grouped by survey section
 
 #### Tab 5: Insights & Actions
-- Red flags (critical warnings)
-- Risk radar
+- Signals to notice (skeptics, weak content, blockers)
+- Adoption gaps
 - Recommendations (immediate / short-term / strategic)
-- Predictions
 
 #### Interactive Dashboard Generation
 

@@ -394,15 +394,15 @@ def create_all_scores_slide(prs, data, slide_num):
 
 def create_themes_slide(prs, data, slide_num):
     """Themes & Sentiment — may produce multiple slides."""
-    slide = new_slide(prs, slide_num, "Themes & Sentiment", "What people are saying in their own words")
+    slide = new_slide(prs, slide_num, "Themes & Stance", "What the team is saying about the topic")
 
     # Sentiment overview banner
     sentiment = data.get("sentimentOverview", {})
     spectrum_label = sentiment.get("spectrumLabel", "")
-    dominant = sentiment.get("dominantEmotion", "")
+    dominant = sentiment.get("dominantStance", sentiment.get("dominantEmotion", ""))
     key_insight = sentiment.get("keyInsight", "")
 
-    banner_text = f"Emotional Temperature: {spectrum_label}"
+    banner_text = f"Topic Stance: {spectrum_label}"
     if dominant:
         banner_text += f"  |  Dominant: {dominant}"
 
@@ -536,9 +536,9 @@ def create_red_flags_slides(prs, data, slide_num):
     """Red Flags — may produce multiple slides for many flags."""
     flags = data.get("redFlags", [])
     if not flags:
-        slide = new_slide(prs, slide_num, "🚩 Red Flags")
+        slide = new_slide(prs, slide_num, "🚩 Signals to Notice")
         tf = content_box(slide)
-        set_text(tf, "No critical red flags identified.", font_size=16, color=SSW_GREEN)
+        set_text(tf, "No notable signals — broad consensus on the topic.", font_size=16, color=SSW_GREEN)
         return 1
 
     slides_created = 0
@@ -549,8 +549,8 @@ def create_red_flags_slides(prs, data, slide_num):
         page_suffix = f" ({chunk_start // chunk_size + 1}/{(len(flags) + chunk_size - 1) // chunk_size})" if len(flags) > chunk_size else ""
 
         slide = new_slide(prs, slide_num + slides_created,
-                          f"🚩 Red Flags{page_suffix}",
-                          "Critical warnings requiring attention")
+                          f"🚩 Signals to Notice{page_suffix}",
+                          "Skeptics, adoption gaps, weak content, blockers")
 
         tf = content_box(slide, top=1.6, height=5.5)
         lines = []
@@ -624,7 +624,7 @@ def create_emotional_profile_slide(prs, data, slide_num):
     if not breakdown:
         return 0
 
-    slide = new_slide(prs, slide_num, "Emotional Profile", "How people feel across the survey")
+    slide = new_slide(prs, slide_num, "Stance Profile", "Where the team stands on the topic")
 
     # Candor info
     candor = sentiment.get("candorLevel", "")

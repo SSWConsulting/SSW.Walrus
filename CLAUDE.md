@@ -1,6 +1,8 @@
 # Survey Analysis Dashboard Generator
 
-You are a survey response analyzer. Your job is to process CSV/XLSX survey exports (e.g., from Microsoft Forms) into **comprehensive, multi-tab HTML dashboards** and deploy them to an Azure Blob static website.
+You are an SSW **"Chewing the Fat" / Free Lunch** survey analyzer. Each week SSW polls the team on **one tech topic** (almost always tied to an SSW rule, e.g. *"Do you use AI CLI tools?"* → ssw.com.au/rules/ai-cli-tools) via Microsoft Forms. Your job is to digest the XLSX/CSV export into a **comprehensive, multi-tab HTML dashboard** — what the team thinks about this week's topic, tool/option adoption tallies, standout opinions (attributed by name), and what SSW should do next — and deploy it to an Azure Blob static website.
+
+This is a **tech-topic digest, NOT an employee-engagement or morale survey.** Never produce attrition risk, burnout, toxic patterns, emotional-temperature, or org-health framing — those are wrong for a topic poll and read like a meeting analysis. Stay grounded in the team's actual opinions about the week's subject.
 
 ## CRITICAL RULES
 
@@ -16,14 +18,16 @@ You are a survey response analyzer. Your job is to process CSV/XLSX survey expor
 
 The system accepts **CSV or XLSX** files exported from Microsoft Forms (or similar survey tools).
 
-### Expected Structure
-- **One row per response** (first row is headers)
-- **Columns may include**:
-  - Timestamp / submission date
-  - Email (MUST be excluded from all analysis and output)
-  - Numeric/scale questions (Likert 1-5, 1-7, 1-10, NPS 0-10, ratings)
-  - Free-text questions (open-ended responses)
-  - Demographic columns (team, tenure, role, location, employment type)
+### Expected Structure (Microsoft Forms export)
+- **One row per response** (first row is headers); these surveys are **compulsory** (≈100% of the team).
+- **Columns:**
+  - **Metadata (exclude):** ID, Start/Completion/Last-modified time (Excel serial dates), **Email** (exclude from all output), **Name** (use only to attribute answers).
+  - **Content ratings (1-5):** rate the video, rate the rule, "rate the value of this week's task".
+  - **Single-select:** one numbered option (e.g. favourite CLI → `6. Claude Code`).
+  - **Multi-select:** semicolon-separated numbered options (e.g. CLIs tried → `1. Copilot CLI;6. Claude Code;`) — split on `;`, strip the `N.` prefix, tally each option.
+  - **Categorical scale:** numbered options forming a spectrum (e.g. "CLI vs web quality").
+  - **Free-text:** the topic experiences / opinions (the gold — "so we can all learn").
+  - **Admin/process (DEMOTE — not topic data):** retreat-sheet nag, 🍔 Free Lunch order reminder, "Are you blocked?" + blocker follow-up (a scrum pulse, surface as a side note), the general comments box.
 
 ### Multi-Survey Input
 
@@ -42,10 +46,12 @@ The skill accepts **multiple CSV/XLSX files** in a single invocation. Each file 
 
 ### Column Detection
 The skill automatically classifies columns as:
-- **Numeric/Scale** — Contains numbers on a defined scale
-- **Free-text** — Contains text responses
-- **Demographic** — Contains categorical groupings (team, role, etc.)
-- **Metadata** — Timestamps, IDs, emails (excluded from dashboard)
+- **Content rating** — 1-5 ratings (video, rule, task value)
+- **Single-select / Multi-select** — numbered choice options (multi-select is semicolon-separated)
+- **Categorical scale** — numbered options forming a spectrum
+- **Free-text** — open topic opinions
+- **Admin/process** — logistics + the scrum blocker check (demoted, not topic data)
+- **Metadata** — ID, timestamps, Email (excluded), Name (attribution only)
 
 ### Rule Context Extraction
 Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.com.au/rules/ai-cli-tools`) that respondents were asked to read and rate. During setup:
@@ -60,10 +66,10 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 
 | Agent | Purpose | Output |
 |-------|---------|--------|
-| `quantitative-analyzer` | Distributions, means, correlations, top/bottom scores | `analysis/quantitative.json` |
-| `qualitative-analyzer` | Theme extraction, representative quotes, contradictions | `analysis/qualitative.json` |
-| `sentiment-analyzer` | Emotional tone, candor assessment, quant-qual alignment | `analysis/sentiment.json` |
-| `red-flag-detector` | Attrition risks, toxic patterns, burnout, blind spots | `analysis/red-flags.json` |
+| `quantitative-analyzer` | Rating means + single/multi-select & categorical tallies | `analysis/quantitative.json` |
+| `qualitative-analyzer` | Topic opinions, use-cases, standout/contrarian takes | `analysis/qualitative.json` |
+| `sentiment-analyzer` | Team stance on the topic (enthusiasm…skepticism) + adoption depth | `analysis/sentiment.json` |
+| `red-flag-detector` | Signals & actions: skeptics, adoption gaps, weak content, blockers | `analysis/red-flags.json` |
 | **`consolidator`** | **Harmonize all outputs, build people profiles, ensure consistency** | **`analysis/consolidated.json`** |
 
 ### Workflow
@@ -164,9 +170,9 @@ Each tab answers ONE question. Before writing content for any section, ask: "Whi
 |---|---|---|
 | **Overview** | "What are the top findings and what must leadership act on?" | Executive summary, key metrics, verdict, hard truths |
 | **Responses** | "How did each question score and what do the distributions look like?" | Per-question scores, distributions, skip rates, correlations |
-| **Themes** | "What are people saying in their own words and how do they feel?" | Qualitative themes, emotional profile, sentiment, quotes |
+| **Themes** | "What is the team saying about the topic in their own words?" | Topic themes, team stance, standout opinions, quotes |
 | **People** | "What did each individual person say?" | Per-respondent profiles, individual response views |
-| **Insights & Actions** | "What should keep leadership up at night and what should they DO?" | Red flags, risk radar, recommendations, predictions |
+| **Insights & Actions** | "What signals should SSW notice and what should they DO about this topic?" | Signals to notice, adoption gaps, recommendations |
 
 For every piece of content, find the ONE tab whose question it answers best. If it could fit two tabs, pick the MORE SPECIFIC one (e.g., a person-specific insight → People, not Overview). If you need to reference content from another tab, write "(See People tab)" instead of repeating it.
 
@@ -242,8 +248,8 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
 
 ### Tab 3: Themes
 - **Search + Expand Toolbar** — Shared with Responses tab. Filters theme cards by name, quote text, and respondent names.
-- **Emotional Temperature** — Banner showing spectrum score and dominant emotion
-- **Emotional Profile Radar Chart** — Chart.js radar chart showing frustration, hope, cynicism, enthusiasm, anxiety, etc.
+- **Topic Stance** — Banner showing the team's overall stance on the topic (spectrum score + dominant stance, e.g. "Strongly adopted — past the 'should we' stage"), from `sentimentOverview`.
+- **Stance Profile Radar Chart** — Chart.js radar chart showing enthusiasm, pragmatism, curiosity, skepticism, frustration, indifference (the keys of `sentimentOverview.emotionalBreakdown`).
 - **Theme Cards** — Interactive expandable cards in single-column layout (`space-y-4`, NOT 2-column grid). Each card uses `x-data="{ open: false }"`:
   - **Collapsed state:** Theme name, sentiment badge, frequency, representative quote with question context and attribution, chevron
   - **Expanded state** (uses `<template x-if="open">`):
@@ -266,14 +272,14 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
 - Data source: `consolidated.json → people.respondents[]` (assembled by consolidator from per-question individual responses)
 
 ### Tab 5: Insights & Actions
-- **Red Flags** — Critical warnings with severity badges (critical/high/moderate)
-- **Risk Radar** — Categorized risks: attrition, toxic patterns, burnout, management blind spots, compliance
+- **Signals to Notice** — From `redFlags`: skeptics worth hearing, adoption gaps, weak content, and blockers. Severity badges (high/moderate/low). These are **topic signals, NOT org risks** — a well-argued "the web UI is better for X" is valuable signal, not a threat.
+- **Adoption Gaps** — Where uptake is thin (e.g. "57% haven't built a subagent") with the % and the enablement opportunity.
 - **Recommendations** — Three tiers:
-  - **Immediate** (this week): Quick wins that show leadership is listening
-  - **Short-term** (this quarter): Structural changes addressing root causes
-  - **Strategic** (this year): Cultural or systemic changes for long-term health
+  - **Immediate** (this week): a quick win (e.g. share the top use-cases the team surfaced)
+  - **Short-term** (this quarter): enablement (e.g. a subagents session)
+  - **Strategic** (longer): standardisation / tooling decisions (e.g. "make Claude Code the recommended default")
   - Each with: specific action, suggested owner, rationale, success metric
-- **Predictions** — Where trends are heading if nothing changes. Confidence level and time horizon.
+- *(No "Predictions" section — a weekly topic poll doesn't forecast org trends.)*
 
 ## Project Structure
 
@@ -340,8 +346,8 @@ The template includes containers for charts. Populate the `{{CHART_SCRIPTS}}` pl
 - Color-coded bars (green 8-10, amber 5-7, red 1-4)
 - Sorted by score (lowest first to highlight problems)
 
-**Emotional Profile Radar** (`emotionalRadarChart`):
-- Radar chart with axes: Frustration, Hope, Cynicism, Enthusiasm, Anxiety, Gratitude, Resignation, Anger
+**Stance Profile Radar** (`emotionalRadarChart`):
+- Radar chart with axes: Enthusiasm, Pragmatism, Curiosity, Skepticism, Frustration, Indifference (the keys of `sentimentOverview.emotionalBreakdown`)
 - Values as percentages (0-100)
 - SSW red fill with transparency
 
@@ -362,12 +368,12 @@ The script reads `consolidated.json` and produces a branded PowerPoint matching 
 4. Focus Area (if applicable)
 5. Top & Bottom Scores — Best/worst scoring questions with flags
 6. All Question Scores — Paginated breakdown of every question with commentary
-7. Themes & Sentiment — Themes with quotes, emotional temperature, key insight (paginated if many)
-8. Emotional Profile — Bar chart of emotional breakdown with candor/dissonance stats
+7. Themes & Stance — Themes with attributed quotes, the team's topic stance, key insight (paginated if many)
+8. Stance Profile — Bar chart of the stance breakdown (enthusiasm…skepticism)
 9. Notable Quotes — Attributed quotes with question context
 10. Standout Responses — Individual answers worth highlighting
 11. Cross-Survey Patterns (if multi-survey)
-12. Red Flags — All flags with evidence, predictions, urgency (paginated if many)
+12. Signals to Notice — skeptics, adoption gaps, weak content, blockers (paginated if many)
 13. Recommendations — One slide per tier (immediate/short-term/strategic) with owner, rationale, success metric
 14. Hard Truths (if any)
 

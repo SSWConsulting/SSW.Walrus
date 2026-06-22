@@ -141,19 +141,45 @@ async function enqueueDone(account, credential, payload) {
 
 function runClaudeCode(filePath, model) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', `/process-survey ${filePath}`, '--model', model, '--dangerously-skip-permissions'];
+    // Stream JSON so each step (sub-agent spawn, tool call) is visible in the
+    // container logs. stream-json requires --verbose in print mode.
+    const args = [
+      '-p', `/process-survey ${filePath}`,
+      '--model', model,
+      '--dangerously-skip-permissions',
+      '--output-format', 'stream-json',
+      '--verbose',
+    ];
     const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 3600_000, // 1 hour max
     });
 
-    let stdout = '';
+    let buffer = '';
+    let collected = '';
     let stderr = '';
 
+    const handleLine = (line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      let evt;
+      try {
+        evt = JSON.parse(trimmed);
+      } catch {
+        return; // ignore any non-JSON noise
+      }
+      logClaudeEvent(evt);
+      const text = claudeEventText(evt);
+      if (text) collected += `${text}\n`;
+    };
+
     proc.stdout.on('data', (data) => {
-      const text = data.toString();
-      stdout += text;
-      process.stdout.write(text);
+      buffer += data.toString();
+      let idx;
+      while ((idx = buffer.indexOf('\n')) >= 0) {
+        handleLine(buffer.slice(0, idx));
+        buffer = buffer.slice(idx + 1);
+      }
     });
 
     proc.stderr.on('data', (data) => {
@@ -163,10 +189,11 @@ function runClaudeCode(filePath, model) {
     });
 
     proc.on('close', (code) => {
+      if (buffer) handleLine(buffer);
       if (code !== 0) {
         reject(new Error(`Claude Code exited with code ${code}. Stderr: ${stderr.slice(-500)}`));
       } else {
-        resolve(stdout);
+        resolve(collected);
       }
     });
 
@@ -174,6 +201,41 @@ function runClaudeCode(filePath, model) {
       reject(new Error(`Failed to spawn Claude Code: ${err.message}`));
     });
   });
+}
+
+// Print a concise progress line for a stream-json event.
+function logClaudeEvent(evt) {
+  if (evt.type === 'system' && evt.subtype === 'init') {
+    console.log(`[claude] session started (model ${evt.model || '?'})`);
+  } else if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
+    for (const block of evt.message.content) {
+      if (block.type === 'tool_use') {
+        const input = block.input || {};
+        let detail = '';
+        if (block.name === 'Task') detail = input.subagent_type || input.description || '';
+        else if (block.name === 'Bash') detail = String(input.command || '').replace(/\s+/g, ' ').slice(0, 80);
+        else if (input.file_path) detail = input.file_path;
+        console.log(`[claude] 🔧 ${block.name}${detail ? ` — ${detail}` : ''}`);
+      } else if (block.type === 'text' && block.text && block.text.trim()) {
+        console.log(`[claude] 💬 ${block.text.trim().replace(/\s+/g, ' ').slice(0, 140)}`);
+      }
+    }
+  } else if (evt.type === 'result') {
+    const turns = evt.num_turns != null ? `${evt.num_turns} turns` : '';
+    const dur = evt.duration_ms ? `${Math.round(evt.duration_ms / 1000)}s` : '';
+    console.log(`[claude] result: ${evt.subtype || ''} ${evt.is_error ? 'ERROR' : 'ok'} ${turns} ${dur}`.replace(/\s+/g, ' ').trim());
+  }
+}
+
+// Pull human-readable text out of an event (used to find DEPLOYED_URL).
+function claudeEventText(evt) {
+  if (evt.type === 'assistant' && evt.message && Array.isArray(evt.message.content)) {
+    return evt.message.content.filter((b) => b.type === 'text').map((b) => b.text).join('\n');
+  }
+  if (evt.type === 'result' && typeof evt.result === 'string') {
+    return evt.result;
+  }
+  return '';
 }
 
 async function loadSecrets(keyVaultUrl) {

@@ -79,17 +79,26 @@ respondent) → **outro**. Card kinds: `intro`/`outro`, `topic`, `section`, `sta
 `quote` (`{quote,name,context}`), `montage` (`{heading,quotes[]}`), `graph`
 (`{chartType,labels,data,horizontal,caption}`), `list`, `names`.
 
-**Then refine the `narration` field** — this is the craft. Each `quote` card's
-narration should **read the person's own words**, with a varied lead-in
-("`<Name>` put it this way.", "For `<Name>`,", "`<Name>` pushed back:"). Rules:
+**Then refine the `narration` field** — this is the craft. **Do NOT read quotes
+verbatim** — the narrator *paraphrases* in their own voice and pulls out the point;
+the card already shows the full quote, with the key phrase highlighted. Rules:
 
-- **Make people feel seen** — name them, quote them, give airtime to many voices
-  (the generator already spreads across distinct people; keep it that way).
+- **Paraphrase, don't recite.** A `quote` card's narration should be the narrator
+  summarising the person's point in fresh words ("Gilles had shelved a project he
+  couldn't speed up — until Claude Code read the codebase and just fixed it"), not
+  the sentence read aloud. Vary the lead-in ("For `<Name>`,", "`<Name>` pushed
+  back:", "`<Name>` made the point that…").
+- **Set `highlight`** on each `quote` card — the phrase(s) within the quote that
+  carry the point (an **exact substring** of `quote`). The card renders those in
+  the accent colour so the eye lands on what the narrator is paraphrasing.
+- **Make people feel seen** — name them, give airtime to many voices (the
+  generator spreads across distinct people; keep it that way).
 - **Speak to the team, about the topic — not the build.** No field names, file
   paths, or "the dashboard shows…".
-- **Curate the quotes:** the generator picks each person's longest substantive
-  answer; swap in a punchier line if there's a better one, and trim rambly/URL-y
-  bits (the card shows what the narration reads).
+- **Curate:** the generator picks each person's longest answer and a rough
+  first-sentence highlight — swap in a punchier line/phrase, trim rambly/URL-y
+  bits, and recheck section fit (a caveat/critique belongs under *The honest
+  feedback*, not *wins*).
 - **Present tense, plain language.** Fix grammar nits ("it's *a* A-" → "an
   A-minus"). Target the length the user asked for (~3 min default; "long-winded"
   ⇒ feature more people, longer).

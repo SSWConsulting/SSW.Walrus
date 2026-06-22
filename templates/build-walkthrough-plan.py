@@ -83,12 +83,23 @@ def best_per_person(pool):
     return by
 
 
+def gist(text):
+    """First sentence — the bit to highlight on the card + paraphrase in the voice."""
+    s = re.split(r"(?<=[.!?])\s", (text or "").strip())[0]
+    return s.strip()
+
+
 def quote_card(q, lead=None):
     text = q["text"]
-    lead = lead or f"{q['name']} put it this way."
+    g = gist(text)
+    lead = lead or f"{q['name']} made the point that —"
+    # Default narration is a SEED: name + the key sentence. The record-walkthrough
+    # skill refines this into a proper paraphrase (don't read the whole quote
+    # verbatim). The card shows the full quote with the key phrase highlighted.
     return {
         "kind": "quote", "quote": text, "name": q["name"], "context": q.get("question") or "",
-        "narration": f"{lead} {text}",
+        "highlight": (g if (g and g != text and len(g) < len(text)) else None),
+        "narration": f"{lead} {g}",
     }
 
 

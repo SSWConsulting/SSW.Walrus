@@ -240,11 +240,23 @@ function topicCardHtml(ch) {
     ${ratings ? `<div style="margin-top:30px;font:500 16px ${FONT};opacity:0.9">${ratings}</div>` : ''}`;
 }
 
+// Escape a quote, then emphasise the "important" phrase(s) — the bits the
+// narration paraphrases — in the accent colour so the eye lands on them.
+function highlightQuote(quote, highlight) {
+  let html = esc(quote);
+  const phrases = (Array.isArray(highlight) ? highlight : [highlight]).filter(Boolean);
+  for (const p of phrases) {
+    const e = esc(String(p));
+    if (e && html.includes(e)) html = html.split(e).join(`<span style="color:${ACCENT};font-weight:800">${e}</span>`);
+  }
+  return html;
+}
+
 function quoteCardHtml(ch) {
   return `${ch.context ? `<div style="font:600 15px ${FONT};opacity:0.5;letter-spacing:0.5px;margin-bottom:22px;max-width:780px">${esc(ch.context)}</div>` : ''}
     <div style="position:relative;max-width:1180px">
       <div style="position:absolute;left:-44px;top:-40px;font:800 150px ${FONT};color:${ACCENT};opacity:0.35;line-height:1">“</div>
-      <div style="font:600 40px/1.34 ${FONT};letter-spacing:-0.4px">${esc(ch.quote)}</div>
+      <div style="font:600 40px/1.34 ${FONT};letter-spacing:-0.4px">${highlightQuote(ch.quote, ch.highlight)}</div>
     </div>
     <div style="margin-top:40px;display:flex;align-items:center;gap:14px">
       <div style="width:46px;height:46px;border-radius:50%;background:${ACCENT};display:flex;align-items:center;justify-content:center;font:700 18px ${FONT}">${esc(initialsOf(ch.name))}</div>

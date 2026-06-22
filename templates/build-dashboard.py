@@ -16,6 +16,7 @@ The card markup matches the patterns documented inline in the template
 
 import html
 import json
+import os
 import re
 import sys
 
@@ -143,6 +144,26 @@ def render_standouts(standouts):
         '<section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">'
         '<h2 class="text-lg text-ssw-charcoal mb-4">💡 Standout Responses</h2>'
         + "".join(cards) + '</section>'
+    )
+
+
+def render_recap_video(out_html_path, video_name="walkthrough.mp4"):
+    """Embed a recap player on Overview iff the walkthrough was rendered next to index.html."""
+    d = os.path.dirname(os.path.abspath(out_html_path))
+    if not os.path.exists(os.path.join(d, video_name)):
+        return ""
+    poster = video_name.rsplit(".", 1)[0] + "-poster.jpg"
+    poster_attr = f' poster="{poster}"' if os.path.exists(os.path.join(d, poster)) else ""
+    return (
+        '<section class="bg-white rounded-xl shadow-sm ssw-card p-4 mb-6">'
+        '<h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">'
+        '<span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>📹 This week\'s recap</h2>'
+        f'<video controls preload="none"{poster_attr} class="w-full rounded-lg" style="max-height:540px;background:#1a1a1a">'
+        f'<source src="{video_name}" type="video/mp4">'
+        f'Your browser can\'t play this video — <a href="{video_name}" class="text-ssw-red underline">download the recap</a>.'
+        '</video>'
+        '<p class="text-xs text-ssw-gray-400 mt-2">A ~3-minute narrated recap of this week\'s responses.</p>'
+        '</section>'
     )
 
 
@@ -698,6 +719,7 @@ def main():
         "{{EXECUTIVE_SUMMARY}}": render_exec_summary(exec_sum.get("bullets")),
         "{{OVERALL_VERDICT}}": esc(exec_sum.get("overallVerdict")),
         "{{OVERALL_GRADE}}": esc(c.get("overallGrade") or ""),
+        "{{RECAP_VIDEO}}": render_recap_video(out_path),
         "{{FOCUS_SUMMARY}}": render_focus_summary(c.get("focusSummary")),
         "{{STANDOUT_RESPONSES}}": render_standouts(c.get("standoutResponses")),
         "{{HARD_TRUTHS}}": render_hard_truths(c.get("hardTruths")),

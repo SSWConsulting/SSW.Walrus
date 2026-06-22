@@ -490,7 +490,11 @@ if (!videoPath || !existsSync(videoPath)) { console.error('[recorder] no video p
 // ---------------------------------------------------------------------------
 const audioClips = clips.map((c, i) => ({ ...c, i })).filter((c) => c.hasAudio);
 const outResolved = path.resolve(ARGS.out);
-const tmpOut = path.join(ROOT, 'output.webm');
+// .mp4 → H.264/AAC (plays inline in any browser + Outlook/Safari); else webm.
+const isMp4 = /\.mp4$/i.test(outResolved);
+const tmpOut = path.join(ROOT, isMp4 ? 'output.mp4' : 'output.webm');
+const vCodec = isMp4 ? ['-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-crf', '23', '-movflags', '+faststart'] : ['-c:v', 'copy'];
+const aCodec = isMp4 ? ['-c:a', 'aac', '-b:a', '128k'] : ['-c:a', 'libopus', '-b:a', '96k'];
 
 if (audioClips.length) {
   console.error('[recorder] building master audio...');
@@ -503,14 +507,20 @@ if (audioClips.length) {
   inputArgs.push('-filter_complex', filterComplex, '-map', '[out]', '-ar', '22050', '-ac', '1', '-y', masterWav);
   execFileSync(FFMPEG, inputArgs, { stdio: 'ignore' });
 
-  console.error('[recorder] muxing audio onto video...');
-  execFileSync(FFMPEG, ['-i', videoPath, '-i', masterWav, '-c:v', 'copy', '-c:a', 'libopus', '-b:a', '96k', '-shortest', '-y', tmpOut], { stdio: 'ignore' });
+  console.error(`[recorder] muxing audio onto video (${isMp4 ? 'mp4/h264' : 'webm'})...`);
+  execFileSync(FFMPEG, ['-i', videoPath, '-i', masterWav, ...vCodec, ...aCodec, '-shortest', '-y', tmpOut], { stdio: 'ignore' });
 } else {
-  // Caption-only / silent walkthrough — just normalise the container.
-  execFileSync(FFMPEG, ['-i', videoPath, '-c', 'copy', '-y', tmpOut], { stdio: 'ignore' });
+  // Caption-only / silent walkthrough.
+  execFileSync(FFMPEG, ['-i', videoPath, ...vCodec, '-an', '-y', tmpOut], { stdio: 'ignore' });
 }
 
 renameSync(tmpOut, outResolved);
+
+// Poster frame (the topic/title card area) for the dashboard <video poster> + email.
+const posterPath = outResolved.replace(/\.[^.]+$/, '') + '-poster.jpg';
+try {
+  execFileSync(FFMPEG, ['-ss', '12', '-i', outResolved, '-frames:v', '1', '-q:v', '3', '-y', posterPath], { stdio: 'ignore' });
+} catch { /* poster is optional */ }
 
 // post-record self-check: video stream + (when expected) non-silent audio + a non-blank mid frame
 const selfCheck = (() => {
@@ -535,6 +545,7 @@ const selfCheck = (() => {
 
 const summary = {
   out: outResolved,
+  poster: existsSync(posterPath) ? posterPath : null,
   durationSec: Math.round((probeDurationMs(outResolved) || 0) / 1000),
   chapters: CHAPTERS.length,
   narration: audioClips.length ? `voice (${PROVIDER})` : 'captions (silent)',

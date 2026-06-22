@@ -459,6 +459,8 @@
         <main>
             <!-- Overview Tab -->
             <div x-show="activeTab === 'overview'" x-cloak>
+                <!-- This week's recap video (injected only when a walkthrough was recorded) -->
+                {{RECAP_VIDEO}}
                 <!-- Executive Summary -->
                 <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
                     <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">

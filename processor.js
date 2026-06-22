@@ -107,9 +107,14 @@ async function main() {
     // skill records the recap, re-embeds it in the dashboard, and re-deploys to
     // the same URL — so a failure here never affects the already-shipped dashboard.
     if (dashboardUrl && process.env.ELEVENLABS_API_KEY) {
-      console.log('[processor] Recording recap walkthrough (/record-walkthrough)...');
+      // Use the slug from the DEPLOYED_URL (the name /process-survey actually used,
+      // which may differ from SURVEY_NAME — e.g. derived from the rule), so the
+      // recap finds the right folder + re-deploys to the same prefix.
+      const slugMatch = dashboardUrl.match(/\/([^/]+)\/?$/);
+      const deployedSlug = (slugMatch && slugMatch[1]) || surveyName;
+      console.log(`[processor] Recording recap walkthrough (/record-walkthrough ${deployedSlug})...`);
       try {
-        await runClaude(`/record-walkthrough ${surveyName}`, model, PHASE2_TIMEOUT_MS);
+        await runClaude(`/record-walkthrough ${deployedSlug}`, model, PHASE2_TIMEOUT_MS);
         console.log('[processor] Recap walkthrough complete');
       } catch (err) {
         console.warn(`[processor] Recap walkthrough skipped: ${err.message}`);

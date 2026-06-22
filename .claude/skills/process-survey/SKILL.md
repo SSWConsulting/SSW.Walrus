@@ -157,6 +157,10 @@ It reads the four `analysis/*.json` files and writes a complete `analysis/consol
 
 **Optional polish:** you may spawn the `consolidator` agent afterwards to refine *synthesis-only* fields (`executiveSummary.bullets`, `overallVerdict`, `keyMetrics`, `hardTruths`, theme de-dup) with small edits. It must NOT regenerate the file. If skipped, the script output is already valid.
 
+> The narrated **recap video** is a separate concern — the `record-walkthrough`
+> skill owns it and runs as its own pipeline phase *after* deploy. This skill
+> stops at deploy.
+
 ### Step 4: Generate Multi-Tab Dashboard (run the renderer script)
 
 The dashboard is **rendered by a script**, NOT by you generating HTML. A 79-respondent People tab alone is thousands of lines of HTML; emitting that as model output does not scale. The renderer fills every placeholder in `templates/survey-dashboard.html` (`{{PEOPLE_CARDS}}`, `{{QUESTION_BREAKDOWN}}`, `{{THEME_CARDS}}`, `{{CHART_SCRIPTS}}`, …) from `consolidated.json`, following the Alpine.js card patterns documented inside the template, plus both Chart.js charts (score-distribution bar + stance radar).

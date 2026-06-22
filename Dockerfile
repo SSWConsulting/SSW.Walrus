@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# Install system dependencies
+# Install system dependencies (ffmpeg = walkthrough video mux/transcode)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     ca-certificates \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Install python deps for the render scripts: python-pptx (slides) + openpyxl
@@ -31,6 +32,14 @@ RUN claude --version
 # Install Node dependencies
 COPY --chown=appuser:appuser package.json ./
 RUN npm install --production
+
+# Walkthrough recorder needs Chromium. Its OS libs need root (apt); the browser
+# itself installs to the appuser cache. Skip both if the build wants a lean image
+# (the recorder degrades gracefully when Chromium is absent).
+USER root
+RUN npx playwright install-deps chromium
+USER appuser
+RUN npx playwright install chromium
 
 # Copy application files
 COPY --chown=appuser:appuser processor.js upload-dashboard.js entrypoint.sh ./

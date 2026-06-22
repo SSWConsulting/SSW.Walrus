@@ -33,6 +33,8 @@ const CONTENT_TYPES = {
   '.svg': 'image/svg+xml',
   '.gif': 'image/gif',
   '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
 };

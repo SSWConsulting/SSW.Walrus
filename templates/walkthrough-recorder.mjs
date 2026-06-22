@@ -134,7 +134,12 @@ async function resolveClips() {
 // ---------------------------------------------------------------------------
 const clips = await resolveClips();
 
-const browser = await chromium.launch({ headless: true, args: ['--window-size=1920,1080'] });
+// --no-sandbox / --disable-dev-shm-usage are required to run Chromium inside the
+// Container App Job (no user namespaces, small /dev/shm); harmless locally.
+const browser = await chromium.launch({
+  headless: true,
+  args: ['--window-size=1920,1080', '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+});
 const ctx = await browser.newContext({
   viewport: { width: 1920, height: 1080 },
   recordVideo: { dir: VIDEO_DIR, size: { width: 1920, height: 1080 } },

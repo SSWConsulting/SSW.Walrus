@@ -101,7 +101,7 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 │  python3 templates/build-dashboard.py \                         │
 │    {consolidated.json} templates/survey-dashboard.html \        │
 │    {dashboard/index.html}                                       │
-│  Multi-tab HTML rendered from consolidated.json (NOT by hand)   │
+│  Embeds the recap player when walkthrough.mp4 is present        │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -112,6 +112,12 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 ┌─────────────────────────────────────────────────────────────────┐
 │                      5. DEPLOY                                   │
 │  node upload-dashboard.js --survey {name} --dir .../dashboard    │
+└─────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────┐
+│        6. RECAP (separate /record-walkthrough skill phase)      │
+│  if ELEVENLABS_API_KEY: record → re-embed → re-deploy           │
+│  Best-effort; owned by the record-walkthrough skill, not this   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -334,6 +340,18 @@ The `consolidator` agent's only job is a light **polish pass after the script ru
 **All quote objects** (`allQuotes`, `notableQuotes`, `standoutResponses`) MUST include a `question` field containing the question text the respondent was answering. This provides essential context for readers.
 
 **When generating the dashboard, always use these exact field names. Do NOT guess or use alternative names like `name`/`value` for free-text responses.**
+
+## Recap Walkthrough — a SEPARATE skill + pipeline phase
+
+The narrated recap video is **not** part of this skill. It's owned by the
+**`record-walkthrough`** skill and runs as its **own pipeline phase** after the
+dashboard deploys (processor.js invokes `/record-walkthrough` when
+`ELEVENLABS_API_KEY` is set). That skill records the recap, re-embeds it into the
+dashboard (`build-dashboard.py` auto-adds the player when `walkthrough.mp4` is
+present), and re-deploys — so it's served from the same dashboard URL already in
+the result email. **No email/Power Automate change.** `process-survey` stays
+concerned only with analysis → dashboard → deploy; the recap is best-effort and
+never blocks it.
 
 ## Dashboard Generation
 

@@ -44,6 +44,12 @@ param dashboardStorageAccountName string
 @description('Dashboard static website host, e.g. sawalrusstagingweb.z8.web.core.windows.net')
 param dashboardBaseUrl string
 
+@description('ElevenLabs voice ID for the recap walkthrough (empty ⇒ recorder default)')
+param walkthroughVoiceId string = ''
+
+@description('Expected name of the recap walkthrough voice (optional assertion)')
+param walkthroughVoiceName string = ''
+
 @description('Cost category tag')
 param costCategoryTag object
 
@@ -129,6 +135,21 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
             {
               name: 'DASHBOARD_BASE_URL'
               value: dashboardBaseUrl
+            }
+            // Recap walkthrough voice (record-walkthrough skill). The ElevenLabs
+            // key itself comes from Key Vault (secret elevenlabs-api-key); these
+            // are non-secret config. Empty voice ⇒ recorder falls back to a default.
+            {
+              name: 'LOGBOOK_TTS_PROVIDER'
+              value: 'elevenlabs'
+            }
+            {
+              name: 'LOGBOOK_VOICE'
+              value: walkthroughVoiceId
+            }
+            {
+              name: 'LOGBOOK_VOICE_NAME'
+              value: walkthroughVoiceName
             }
           ]
         }

@@ -102,6 +102,20 @@ async function main() {
       console.warn('[processor] Warning: Could not extract DEPLOYED_URL after both phases');
     }
 
+    // 3b. Recap walkthrough — a SEPARATE phase (the record-walkthrough skill).
+    // Only when the dashboard is live and a TTS key is present. Best-effort: the
+    // skill records the recap, re-embeds it in the dashboard, and re-deploys to
+    // the same URL — so a failure here never affects the already-shipped dashboard.
+    if (dashboardUrl && process.env.ELEVENLABS_API_KEY) {
+      console.log('[processor] Recording recap walkthrough (/record-walkthrough)...');
+      try {
+        await runClaude(`/record-walkthrough ${surveyName}`, model, PHASE2_TIMEOUT_MS);
+        console.log('[processor] Recap walkthrough complete');
+      } catch (err) {
+        console.warn(`[processor] Recap walkthrough skipped: ${err.message}`);
+      }
+    }
+
     // 4. Upload the generated PPTX to the results container (for Flow B to attach)
     const today = new Date().toISOString().split('T')[0];
     const pptxPath = `surveys/${surveyName}/${today}/dashboard/${surveyName}.pptx`;
@@ -302,6 +316,18 @@ async function loadSecrets(keyVaultUrl) {
     }
   } catch (error) {
     console.warn(`[processor] Could not load secret "anthropic-oauth-token": ${error.message}`);
+  }
+
+  // Optional: the ElevenLabs key enables the recap walkthrough. Absent ⇒ the
+  // skill simply skips the video (the dashboard still ships). Best-effort.
+  try {
+    const tts = await client.getSecret('elevenlabs-api-key');
+    if (tts.value) {
+      process.env.ELEVENLABS_API_KEY = tts.value;
+      if (!process.env.LOGBOOK_TTS_PROVIDER) process.env.LOGBOOK_TTS_PROVIDER = 'elevenlabs';
+    }
+  } catch (error) {
+    console.warn(`[processor] No "elevenlabs-api-key" secret — recap video disabled: ${error.message}`);
   }
 }
 

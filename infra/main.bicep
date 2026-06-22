@@ -28,6 +28,12 @@ param imageTag string = 'latest'
 @description('Claude model to use')
 param claudeModel string = 'claude-sonnet-4-6'
 
+@description('ElevenLabs voice ID for the recap walkthrough (record-walkthrough skill)')
+param walkthroughVoiceId string = 'x9d3o60RLzlwegAit1SJ'
+
+@description('Expected name of the recap walkthrough voice')
+param walkthroughVoiceName string = 'Edd'
+
 @description('Cost category tag for billing')
 param costCategoryTag CostCategoryTag
 
@@ -131,6 +137,8 @@ module containerApp 'modules/containerApp.bicep' = {
     storageAccountName: storage.outputs.name
     dashboardStorageAccountName: dashboardStorage.outputs.name
     dashboardBaseUrl: dashboardStorage.outputs.staticWebsiteHost
+    walkthroughVoiceId: walkthroughVoiceId
+    walkthroughVoiceName: walkthroughVoiceName
     costCategoryTag: costCategoryTag
   }
   dependsOn: [

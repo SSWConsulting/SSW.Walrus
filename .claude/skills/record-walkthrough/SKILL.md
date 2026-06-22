@@ -105,40 +105,52 @@ the card already shows the full quote, with the key phrase highlighted. Rules:
 - You can reorder cards, add/remove `quote`/`montage` cards, or add a `stat`/
   `graph`. Keep the **names** montage last-but-one so everyone appears.
 
-## 3. Record
+## 3. Record — straight INTO the dashboard folder
+
+Output **`walkthrough.mp4`** (H.264, plays inline anywhere) directly into the
+dashboard folder so the dashboard can embed it and it ships in the same deploy.
+Keep the plan OUT of `dashboard/` so it isn't published.
 
 ```bash
-# voice (needs the key + a voice id):
-ELEVENLABS_API_KEY=… LOGBOOK_TTS_PROVIDER=elevenlabs LOGBOOK_VOICE=<voice-id> \
-  node templates/walkthrough-recorder.mjs \
-    --plan surveys/<survey>/<date>/walkthrough/plan.json \
-    --out  surveys/<survey>/<date>/walkthrough/<survey>.webm
+# voice (key in env — provided by Key Vault in the pipeline):
+node templates/walkthrough-recorder.mjs \
+  --plan surveys/<survey>/<date>/walkthrough-plan.json \
+  --out  surveys/<survey>/<date>/dashboard/walkthrough.mp4
 
-# captioned (no key — silent, burned-in narration):
-node templates/walkthrough-recorder.mjs --plan …/plan.json --out …/<survey>.webm
+# no key ⇒ silent captioned render (still valid):
+node templates/walkthrough-recorder.mjs --plan …/walkthrough-plan.json --out …/dashboard/walkthrough.mp4
 ```
 
-- TTS is **hash-cached** by `(provider, voice, text)`: editing one chapter's
-  narration re-synthesises only that clip. Pass `--fresh` to wipe the cache.
-- `LOGBOOK_VOICE` is an ElevenLabs voice id (defaults to "Rachel"); set
-  `LOGBOOK_VOICE_NAME` to assert it resolves to the expected name.
-- The recorder prints a JSON summary: output path, duration, `narration` mode
-  (voice vs captions), the `selfCheck` result, and any `degraded` notes. A failed
-  self-check (blank frame / missing stream) exits non-zero — surface it, don't
-  ship a broken video.
+- `.mp4` out ⇒ H.264/AAC; the recorder also writes `walkthrough-poster.jpg`.
+- TTS is **hash-cached** by `(provider, voice, text)`: editing one card's
+  narration re-synthesises only that clip. `--fresh` wipes the cache.
+- `LOGBOOK_VOICE` is an ElevenLabs voice id; `LOGBOOK_VOICE_NAME` (optional)
+  asserts the name. Provider/key from env (`ELEVENLABS_API_KEY`).
+- The recorder prints a JSON summary (out, poster, duration, narration mode,
+  `selfCheck`, `degraded`). A failed self-check exits non-zero — don't ship it.
 
-## 4. Deliver
+## 4. Re-embed + re-deploy
 
-On-demand, local-first: report the local `.webm` path, its duration, the chapter
-list, and the narration mode (voice/captions). The user reviews and iterates on
-the narration (cheap — only edited clips re-synthesise).
+The recap is its own pipeline phase, run **after** `process-survey` has already
+built + deployed the dashboard. Now that `walkthrough.mp4` sits in the dashboard
+folder, re-render the dashboard (it auto-embeds the player) and re-deploy:
 
-Optional once approved: upload alongside the dashboard so it's linkable —
-`node upload-dashboard.js --survey <survey> --dir surveys/<survey>/<date>/walkthrough`
-(then the `.webm` lives at `<base>/<survey>/<survey>.webm`), or attach/link it via
-the email egress. Baking it into the weekly pipeline (auto-record per survey) is a
-follow-up — it needs Chromium + ffmpeg in the container image and the TTS key in
-Key Vault.
+```bash
+python3 templates/build-dashboard.py \
+  surveys/<survey>/<date>/analysis/consolidated.json \
+  templates/survey-dashboard.html \
+  surveys/<survey>/<date>/dashboard/index.html
+node upload-dashboard.js --survey <survey> --dir surveys/<survey>/<date>/dashboard
+```
+
+`upload-dashboard.js` publishes `index.html` + `walkthrough.mp4` +
+`walkthrough-poster.jpg` to `$web` under the same survey prefix — so the recap
+plays from the **same dashboard URL already in the result email**. No email or
+Power Automate change. Report the URL, duration, narration mode, and any degrade.
+
+**This whole skill is best-effort in the pipeline** — if recording fails (no
+Chromium/ffmpeg, TTS error), the dashboard from `process-survey` is already live;
+just log why the recap was skipped.
 
 ## Inputs
 

@@ -142,257 +142,36 @@ Pass each agent:
    - Blockers (scrum side-signal)
    - Recommendations
 
-### Step 3: CONSOLIDATION (Critical Quality Step)
+### Step 3: CONSOLIDATION (run the assembler script)
 
-Run the **consolidator** agent to:
+Consolidation is a **deterministic script**, not the consolidator agent hand-writing JSON. The bulky arrays (every question's `individualResponses`, every person's profile, every theme's `allQuotes`) are pure data pivots — making the model emit thousands of lines of JSON is slow and once blew the job's time budget. Run:
 
-1. **Cross-validate** — Resolve metric conflicts between agents
-2. **Topic fingerprint** — Identify same topics across agents, merge into single entries
-3. **Deduplicate** — Each finding appears in exactly ONE dashboard tab
-4. **People assembly** — Build per-respondent profiles from per-question data
-5. **Data handling** — Exclude emails, preserve attribution
-6. **Amplify** — Rank findings by importance
-7. **Synthesize** — Create executive summary and recommendations
-
-Output: `analysis/consolidated.json`
-
-### Step 4: Generate Multi-Tab Dashboard
-
-Read the template: `templates/survey-dashboard.html`
-Populate all placeholders using **consolidated.json** (NOT raw agent outputs).
-
-#### Tab 1: Overview
-- Executive summary bullets (max 5)
-- Key metric cards
-- Overall verdict with grade
-- Focus area summary (if focus prompt provided)
-- Hard truths (max 2, residual only)
-
-#### Tab 2: Responses
-- Score distribution chart (Chart.js bar chart)
-- **For multi-survey:** Questions grouped by survey source with visual dividers (survey name + response count)
-- Question-by-question breakdown with:
-  - Score bars showing mean
-  - Distribution mini-charts
-  - Skip rates
-  - Flags (bimodal, below benchmark, etc.)
-
-#### Tab 3: Themes
-- Topic stance banner
-- Stance profile radar chart (Chart.js)
-- Theme cards with frequency, sentiment, quotes (each quote showing the question being answered)
-- Notable quotes section (each quote showing the question being answered, respondent name, and theme)
-
-#### Tab 4: People
-- Searchable list of respondents (shared search toolbar)
-- Expandable person cards (same Alpine.js pattern as question cards)
-- Each card shows: name, average score, response count, notable flags
-- Expanded view: all numeric responses with score bars + all text responses, grouped by survey section
-
-#### Tab 5: Insights & Actions
-- Signals to notice (skeptics, weak content, blockers)
-- Adoption gaps
-- Recommendations (immediate / short-term / strategic)
-
-#### Interactive Dashboard Generation
-
-The dashboard uses Alpine.js for all client-side interactivity. When generating HTML from `consolidated.json`, follow these patterns:
-
-##### Expandable Question Cards (`{{QUESTION_BREAKDOWN}}`)
-
-For each numeric question in `questionBreakdown`:
-
-```html
-<div x-data="{ open: false, showAll: false }"
-     @expand-all.window="open = true"
-     @collapse-all.window="open = false"
-     x-show="!searchQuery || 'SEARCH_INDEX'.includes(searchQuery.toLowerCase())"
-     class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">
-  <!-- Collapsed: score bar + flags + chevron -->
-  <div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">
-    ...score bar, mean, flag badges...
-    <span class="chevron-icon" :class="open && 'open'">▼</span>
-  </div>
-  <!-- Expanded: commentary, distribution, individual responses -->
-  <template x-if="open">
-    <div class="question-card-body p-4">
-      ...commentary, distribution chart, flags, correlations...
-      <div class="response-list">
-        ...first 20 response-items...
-        <template x-if="!showAll"><button class="show-more-btn" @click="showAll = true">Show N more</button></template>
-        <template x-if="showAll">...remaining items...</template>
-      </div>
-    </div>
-  </template>
-</div>
+```bash
+python3 templates/build-consolidated.py \
+  surveys/{survey-name}/{date}/analysis \
+  --survey-name "{topic}" --topic "{topic}" \
+  --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" [--focus "{focus}"]
 ```
 
-For each free-text question in `freeTextQuestions`:
+It reads the four `analysis/*.json` files and writes a complete `analysis/consolidated.json` with the exact field names the dashboard + slides bind to (cross-validates, pivots people, excludes emails, demotes logistics).
 
-```html
-<div x-data="{ open: false, showAll: false }"
-     @expand-all.window="open = true"
-     @collapse-all.window="open = false"
-     x-show="!searchQuery || 'SEARCH_INDEX'.includes(searchQuery.toLowerCase())"
-     class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">
-  <!-- Collapsed: question text + response count badge + chevron -->
-  <div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">
-    <div class="flex-1">
-      <p class="font-semibold text-ssw-charcoal text-sm">Q: Question text here</p>
-      <div class="flex items-center gap-3 mt-2">
-        <span class="text-xs bg-ssw-gray-100 text-ssw-gray-600 px-2 py-0.5 rounded-full">Free Text</span>
-        <span class="text-xs text-ssw-gray-500">{responseCount} responses</span>
-      </div>
-    </div>
-    <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
-  </div>
-  <!-- Expanded: all text responses with respondent names, paginated at 20 -->
-  <template x-if="open">
-    <div class="question-card-body p-4">
-      <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">Responses</h4>
-      <div class="response-list">
-        <!-- CRITICAL: Access responses[].respondent for name and responses[].text for content -->
-        <!-- These are the EXACT key names used in consolidated.json for freeTextQuestions -->
-        <div class="response-item">
-          <span class="font-semibold text-ssw-charcoal">{responses[i].respondent}</span>
-          <p class="text-ssw-gray-600 mt-0.5">{responses[i].text}</p>
-        </div>
-        ...first 20 response-items...
-        <template x-if="!showAll"><button class="show-more-btn" @click="showAll = true">Show N more</button></template>
-        <template x-if="showAll">...remaining items...</template>
-      </div>
-    </div>
-  </template>
-</div>
+**Optional polish:** you may spawn the `consolidator` agent afterwards to refine *synthesis-only* fields (`executiveSummary.bullets`, `overallVerdict`, `keyMetrics`, `hardTruths`, theme de-dup) with small edits. It must NOT regenerate the file. If skipped, the script output is already valid.
+
+### Step 4: Generate Multi-Tab Dashboard (run the renderer script)
+
+The dashboard is **rendered by a script**, NOT by you generating HTML. A 79-respondent People tab alone is thousands of lines of HTML; emitting that as model output does not scale. The renderer fills every placeholder in `templates/survey-dashboard.html` (`{{PEOPLE_CARDS}}`, `{{QUESTION_BREAKDOWN}}`, `{{THEME_CARDS}}`, `{{CHART_SCRIPTS}}`, …) from `consolidated.json`, following the Alpine.js card patterns documented inside the template, plus both Chart.js charts (score-distribution bar + stance radar).
+
+```bash
+mkdir -p surveys/{survey-name}/{date}/dashboard
+python3 templates/build-dashboard.py \
+  surveys/{survey-name}/{date}/analysis/consolidated.json \
+  templates/survey-dashboard.html \
+  surveys/{survey-name}/{date}/dashboard/index.html
 ```
 
-**IMPORTANT — free-text response field names:** The `freeTextQuestions[].responses` array uses `respondent` for the person's name and `text` for the response content. These MUST match the consolidated.json schema. When generating the dashboard, always access `.respondent` and `.text` — NOT `.name` or `.value`.
+**Do NOT hand-write the dashboard HTML and do NOT edit `index.html` after the script writes it.** If something looks wrong, fix the data in `consolidated.json` (or the agent that produced it) and re-run the renderer — never patch the output. The five tabs (Overview, Responses, Themes, People, Insights & Actions), search/expand toolbar, severity badges, and styling all come from the template + renderer.
 
-**Search index:** Bake a lowercase string (max 500 chars) into the `x-show` expression containing question text + insight + flag text. Use `includes()` for instant filtering.
-
-**DOM strategy:** Use `<template x-if="open">` (NOT `x-show`) for expanded bodies. This prevents rendering 100 questions × 200 respondents = 20k DOM nodes on load.
-
-**Pagination:** First 20 items visible, rest behind `showAll` toggle. The "Show more" button shows the count of remaining items.
-
-**Visual priority:** Questions with critical flags get `border-l-4 border-ssw-red`; warning flags get `border-l-4 border-amber-400`.
-
-##### Expandable Theme Cards (`{{THEME_CARDS}}`)
-
-For each theme in `themes`:
-
-```html
-<div x-data="{ open: false }"
-     @expand-all.window="open = true"
-     @collapse-all.window="open = false"
-     x-show="!searchQuery || 'SEARCH_INDEX'.includes(searchQuery.toLowerCase())"
-     class="theme-card theme-{sentiment} bg-white rounded-lg p-4">
-  <!-- Collapsed: name, frequency, representative quote with question context -->
-  <div class="question-card-header flex items-center justify-between" @click="open = !open">
-    <div class="flex-1">
-      ...theme name, sentiment badge, frequency...
-      <p class="text-xs text-ssw-gray-500 mt-1">Answering: "{allQuotes[0].question}"</p>
-      <p class="quote-block text-sm mt-1">"{representativeQuote}"</p>
-      <p class="quote-attribution">— {representativeQuoteName}</p>
-    </div>
-    <span class="chevron-icon" :class="open && 'open'">▼</span>
-  </div>
-  <!-- Expanded: all quotes, each with question context -->
-  <template x-if="open">
-    <div class="question-card-body pt-4 mt-3">
-      ...actionability, appears-in-questions...
-      <h4>All Quotes (N)</h4>
-      <div class="response-list space-y-2">
-        <!-- CRITICAL: Every quote MUST show the question being answered -->
-        <div class="response-item">
-          <div class="flex items-center gap-2 mb-1">
-            <span class="font-semibold text-ssw-charcoal text-xs">{allQuotes[i].name}</span>
-            <span class="text-xs text-ssw-gray-400">{allQuotes[i].surveyLabel}</span>
-          </div>
-          <p class="text-xs text-ssw-gray-400 mb-1">Answering: "{allQuotes[i].question}"</p>
-          <p class="text-ssw-gray-600 text-sm italic">"{allQuotes[i].text}"</p>
-        </div>
-      </div>
-    </div>
-  </template>
-</div>
-```
-
-Use single-column layout (`space-y-4`) — expandable cards need full width for quote lists.
-
-##### People Cards (`{{PEOPLE_CARDS}}`)
-
-For each respondent in `people.respondents`:
-
-```html
-<div x-data="{ open: false }"
-     @expand-all.window="open = true"
-     @collapse-all.window="open = false"
-     x-show="!searchQuery || 'LOWERCASE_NAME'.includes(searchQuery.toLowerCase())"
-     class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">
-  <div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">
-    <div class="flex items-center gap-3 flex-1">
-      <div class="w-9 h-9 rounded-full bg-ssw-gray-100 flex items-center justify-center text-ssw-charcoal font-bold text-sm">
-        {initials}
-      </div>
-      <div class="flex-1">
-        <p class="font-semibold text-ssw-charcoal">{name}</p>
-        <div class="flex items-center gap-3 mt-1">
-          <span class="text-xs text-ssw-gray-500">Avg: {averageScore}/{scale}</span>
-          <span class="text-xs text-ssw-gray-500">{responseCount} responses</span>
-          <span class="flag-badge">{flag}</span>
-        </div>
-      </div>
-      <div class="score-bar max-w-[120px] flex-shrink-0">
-        <div class="score-bar-fill score-{level}" style="width: {pct}%"></div>
-      </div>
-    </div>
-    <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
-  </div>
-  <template x-if="open">
-    <div class="question-card-body p-4">
-      <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">Numeric Responses</h4>
-      <div class="response-list mb-4">
-        <div class="response-item">
-          <div class="flex items-center justify-between">
-            <span class="text-ssw-gray-600 text-xs flex-1">{question}</span>
-            <div class="flex items-center gap-2">
-              <div class="score-bar w-16"><div class="score-bar-fill score-{level}" style="width: {pct}%"></div></div>
-              <span class="text-xs font-bold w-8 text-right">{value}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-      <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">Text Responses</h4>
-      <div class="response-list">
-        <div class="response-item">
-          <p class="text-xs text-ssw-gray-400 mb-0.5">{question}</p>
-          <p class="text-ssw-gray-600 text-sm">{text}</p>
-        </div>
-      </div>
-    </div>
-  </template>
-</div>
-```
-
-##### Standout Response Cards (`{{STANDOUT_RESPONSES}}`)
-
-```html
-<section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
-  <h2 class="text-lg text-ssw-charcoal mb-4">💡 Standout Responses</h2>
-  <div class="space-y-4">
-    <div class="standout-card">
-      <div class="flex items-center gap-2 mb-2">
-        <span class="font-semibold text-ssw-charcoal">Respondent Name</span>
-        <span class="standout-badge">Why it stands out</span>
-      </div>
-      <p class="text-xs text-ssw-gray-500 mb-1">Answering: "Question text"</p>
-      <blockquote class="quote-block">"Response text"</blockquote>
-    </div>
-  </div>
-</section>
-```
-
-Save to: `surveys/{survey-name}/{date}/dashboard/index.html`
+Output: `surveys/{survey-name}/{date}/dashboard/index.html`
 
 ### Step 4.5: Generate Slide Deck
 

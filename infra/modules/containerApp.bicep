@@ -79,7 +79,10 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
     environmentId: containerAppEnvironment.id
     configuration: {
       triggerType: 'Manual'
-      replicaTimeout: 3600
+      // Must exceed processor.js PHASE1_TIMEOUT_MS + PHASE2_TIMEOUT_MS (45+25min)
+      // so a phase-1 hang leaves room for the dashboard phase before the replica
+      // is SIGTERM'd. Normal runs finish in ~15min (rendering is script-driven).
+      replicaTimeout: 5400
       replicaRetryLimit: 0
       manualTriggerConfig: {
         parallelism: 1

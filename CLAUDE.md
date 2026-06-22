@@ -88,19 +88,20 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 └───────┼─────────────┼────────────┼──────────────────┼───────────┘
         ↓             ↓            ↓                  ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    3. CONSOLIDATION                              │
-│  • Cross-validate metrics between agents                        │
-│  • Topic fingerprinting and deduplication                       │
-│  • People profile assembly (pivot per-question → per-person)    │
-│  • Data handling (email exclusion, attribution)                 │
-│  • Content assignment to dashboard tabs                         │
-│  • Recommendation synthesis                                     │
+│                    3. CONSOLIDATION (script)                     │
+│  python3 templates/build-consolidated.py {analysis-dir} ...     │
+│  • Pivots per-question responses → per-person profiles (code)   │
+│  • Carries individualResponses / allQuotes intact (code)        │
+│  • Excludes email, demotes logistics                            │
+│  • Optional: consolidator agent polishes synthesis fields only  │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                  4. GENERATE DASHBOARD                           │
-│  Use consolidated.json (NOT raw agent outputs)                  │
-│  Multi-tab HTML with consistent content throughout              │
+│              4. GENERATE DASHBOARD (script)                      │
+│  python3 templates/build-dashboard.py \                         │
+│    {consolidated.json} templates/survey-dashboard.html \        │
+│    {dashboard/index.html}                                       │
+│  Multi-tab HTML rendered from consolidated.json (NOT by hand)   │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -298,9 +299,24 @@ surveys/{survey-name}/
 │       └── {survey-name}.pptx        # Slide deck for presentations
 ```
 
+## Consolidation (run the assembler script)
+
+**Consolidation is done by a deterministic script — `templates/build-consolidated.py` — NOT by the consolidator agent hand-writing `consolidated.json`.** The bulky parts of that file (every question's `individualResponses`, every person's profile, every theme's `allQuotes`) are pure data pivots from the four agent outputs; making the model emit thousands of lines of JSON is what blew the job time budget. The script stitches it together in milliseconds with the exact field names the dashboard + slides bind to.
+
+Run it after the four analysis agents have written their JSON:
+
+```bash
+python3 templates/build-consolidated.py \
+  surveys/{survey-name}/{date}/analysis \
+  --survey-name "{topic}" --topic "{topic}" \
+  --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" [--focus "{focus}"]
+```
+
+The `consolidator` agent's only job is a light **polish pass after the script runs**: read the produced `consolidated.json` and improve the synthesis-only fields (`executiveSummary.bullets`, `overallVerdict`, `keyMetrics` labels, `hardTruths`, and de-dup obviously-duplicated themes) with small targeted edits. It must NOT regenerate the file or rewrite the bulky arrays. If the agent is skipped, the script's output is already a valid, complete dashboard input.
+
 ## Consolidated JSON Schema (Critical Field Names)
 
-The consolidator MUST produce `consolidated.json` using these exact field names. The dashboard generator relies on them.
+`build-consolidated.py` produces `consolidated.json` using these exact field names, and `build-dashboard.py` reads them. The two scripts are a matched pair — if you change a field name, change both.
 
 ### Response field names (MUST be consistent across all question types):
 
@@ -321,35 +337,23 @@ The consolidator MUST produce `consolidated.json` using these exact field names.
 
 ## Dashboard Generation
 
-### IMPORTANT: Use the Template
+### CRITICAL: Render with the script, do NOT hand-write HTML
 
-**You MUST use the template file at `templates/survey-dashboard.html` as the base for generating the dashboard.**
+**The dashboard is rendered by a deterministic script — `templates/build-dashboard.py` — NOT by you generating HTML token-by-token.** Hand-generating the cards does not scale: a 79-respondent People tab alone is thousands of lines of HTML, and emitting that as model output blows the job's time budget. The script fills the template's placeholders (`{{PEOPLE_CARDS}}`, `{{QUESTION_BREAKDOWN}}`, `{{THEME_CARDS}}`, `{{CHART_SCRIPTS}}`, …) from `consolidated.json` in milliseconds, following the exact Alpine.js card patterns documented inside `templates/survey-dashboard.html`.
 
-1. Read the template file first: `templates/survey-dashboard.html`
-2. The template contains:
-   - SSW brand colors and styling
-   - Tab navigation (Overview, Responses, Themes, People, Insights & Actions)
-   - Placeholder variables like `{{SURVEY_NAME}}`, `{{DATE}}`, `{{EXECUTIVE_SUMMARY}}`, `{{PEOPLE_CARDS}}`, etc.
-   - Chart.js setup with SSW colors
-   - Score bar, theme card, people card, severity badge CSS styles
-3. Replace ALL placeholders with actual content from `consolidated.json`
-4. Save the final HTML to `surveys/{survey-name}/{date}/dashboard/index.html`
+Run it:
 
-**DO NOT create HTML from scratch - USE THE TEMPLATE!**
+```bash
+mkdir -p surveys/{survey-name}/{date}/dashboard
+python3 templates/build-dashboard.py \
+  surveys/{survey-name}/{date}/analysis/consolidated.json \
+  templates/survey-dashboard.html \
+  surveys/{survey-name}/{date}/dashboard/index.html
+```
 
-### Chart.js Integration
+It generates all tabs (Overview, Responses, Themes, People, Insights & Actions), the score-distribution bar chart (`scoreDistributionChart`, mean per rating question, color-coded green ≥4 / amber ≥3 / red <4 on the 1-5 scale, sorted lowest-first), and the stance-profile radar (`emotionalRadarChart`, the six keys of `sentimentOverview.emotionalBreakdown` as percentages). The card markup, search indexes, and styling all come from the template — you do not edit the HTML by hand.
 
-The template includes containers for charts. Populate the `{{CHART_SCRIPTS}}` placeholder with Chart.js initialization code:
-
-**Score Distribution Chart** (`scoreDistributionChart`):
-- Horizontal bar chart showing mean score per question
-- Color-coded bars (green 8-10, amber 5-7, red 1-4)
-- Sorted by score (lowest first to highlight problems)
-
-**Stance Profile Radar** (`emotionalRadarChart`):
-- Radar chart with axes: Enthusiasm, Pragmatism, Curiosity, Skepticism, Frustration, Indifference (the keys of `sentimentOverview.emotionalBreakdown`)
-- Values as percentages (0-100)
-- SSW red fill with transparency
+**Do NOT generate the dashboard HTML yourself, and do NOT edit `index.html` after the script writes it.** If a section looks wrong, fix the data in `consolidated.json` (or the agent that produced it) and re-run the script — never patch the output. The renderer + the consolidated assembler are the contract; keep their field names in sync.
 
 ## Slide Deck Generation
 

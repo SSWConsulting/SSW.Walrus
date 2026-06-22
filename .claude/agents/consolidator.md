@@ -5,7 +5,27 @@ description: Harmonizes the analysis-agent outputs of a Chewing the Fat / Free L
 
 # Consolidator — Chewing the Fat (Tech-Topic Digest)
 
-You take the four analysis-agent outputs for an SSW "Chewing the Fat" / Free Lunch survey and produce a single, consistent **`consolidated.json`** — the digest of what the team thinks about **this week's tech topic** (e.g. AI CLI tools). The dashboard is generated from this file, so the **field names below are fixed** — keep them exactly. What changes from the old engagement framing is the *meaning*: this is a topic digest (adoption, opinions, recommendations), not an org-health report. No attrition, burnout, toxicity, emotional-temperature, or morale.
+The four analysis-agent outputs for an SSW "Chewing the Fat" / Free Lunch survey are harmonized into a single, consistent **`consolidated.json`** — the digest of what the team thinks about **this week's tech topic** (e.g. AI CLI tools).
+
+## CRITICAL: a script does the heavy lifting — you only polish
+
+**`consolidated.json` is assembled by a deterministic script, NOT by you typing it out.** The bulky arrays (every question's `individualResponses`, every person's profile, every theme's `allQuotes`) are pure data pivots — making a model emit thousands of lines of JSON is slow and once blew a 60-minute job timeout. Do this:
+
+1. **Run the assembler** (skip if `consolidated.json` already exists in the analysis dir):
+   ```bash
+   python3 templates/build-consolidated.py <analysis-dir> \
+     --survey-name "<topic>" --topic "<topic>" --date "<DD/MM/YYYY>" --rule-url "<rule url>"
+   ```
+   It reads `quantitative.json` / `qualitative.json` / `sentiment.json` / `red-flags.json` and writes a complete `consolidated.json` with all the field names the dashboard binds to.
+
+2. **Polish only the synthesis fields** with small, targeted `Edit`s to the produced JSON:
+   - `executiveSummary.bullets` (max 5, factual, one sentence each) and `executiveSummary.overallVerdict`
+   - `keyMetrics` labels/values if a better headline number exists
+   - `hardTruths` (max 2, punchy)
+   - de-dup any obviously duplicated `themes`
+   Do **NOT** rewrite the bulky arrays, regenerate the whole file, or change field names. If you have nothing to improve, leave it — the script's output is already valid.
+
+The dashboard is rendered from this file, so the **field names below are fixed**. The framing is a topic digest (adoption, opinions, recommendations), not an org-health report — no attrition, burnout, toxicity, emotional-temperature, or morale.
 
 ## Mindset
 

@@ -22,6 +22,12 @@ const RESULTS_CONTAINER = 'survey-results';
 const DONE_QUEUE = 'survey-done';
 const STORAGE_SUFFIX = process.env.STORAGE_SUFFIX || 'core.windows.net';
 
+// Phase budgets. The Container App Job replicaTimeout must be larger than the
+// sum of these so a phase-1 hang leaves room for phase 2 to finish + deploy.
+// Override via env for tuning without an image rebuild.
+const PHASE1_TIMEOUT_MS = Number(process.env.PHASE1_TIMEOUT_MS) || 45 * 60 * 1000;
+const PHASE2_TIMEOUT_MS = Number(process.env.PHASE2_TIMEOUT_MS) || 25 * 60 * 1000;
+
 async function main() {
   const {
     INBOX_BLOB,
@@ -65,16 +71,29 @@ async function main() {
     // 2. Run Claude Code: analysis + consolidation + dashboard (phase 1)
     console.log('[processor] Running Claude Code /process-survey...');
     const model = CLAUDE_MODEL || 'claude-sonnet-4-6';
-    const phase1 = await runClaude(`/process-survey ${localPath}`, model);
-    let dashboardUrl = extractDeployedUrl(phase1);
+    let dashboardUrl = null;
+    try {
+      // Cap phase 1 below the Container App Job replicaTimeout so that if it
+      // hangs we regain control and can still run the dashboard phase, rather
+      // than the whole container being SIGTERM'd at the replica deadline.
+      const phase1 = await runClaude(`/process-survey ${localPath}`, model, PHASE1_TIMEOUT_MS);
+      dashboardUrl = extractDeployedUrl(phase1);
+    } catch (err) {
+      console.warn(`[processor] Phase 1 ended early (${err.message}) — proceeding to dashboard phase.`);
+    }
 
-    // 2b. Phase 2 — large surveys can exhaust the first run's context before the
-    // dashboard is generated. If no DEPLOYED_URL came back, run a focused second
-    // pass whose only job is to finish + deploy from the analysis already on disk.
+    // 2b. Phase 2 — large surveys can run long or exhaust the first run's context
+    // before the dashboard is generated. If no DEPLOYED_URL came back (clean or
+    // via a phase-1 timeout), run a focused second pass that renders + deploys
+    // from the analysis already on disk using the deterministic scripts.
     if (!dashboardUrl) {
       console.log('[processor] No dashboard from phase 1 — running dedicated dashboard phase...');
-      const phase2 = await runClaude(dashboardPhasePrompt(surveyName), model);
-      dashboardUrl = extractDeployedUrl(phase2);
+      try {
+        const phase2 = await runClaude(dashboardPhasePrompt(surveyName), model, PHASE2_TIMEOUT_MS);
+        dashboardUrl = extractDeployedUrl(phase2);
+      } catch (err) {
+        console.warn(`[processor] Phase 2 ended early (${err.message}).`);
+      }
     }
 
     if (dashboardUrl) {
@@ -153,21 +172,21 @@ function extractDeployedUrl(output) {
 
 // Phase-2 prompt: finish delivery from the analysis already written to disk,
 // without re-running the four analysis agents. Used when phase 1 ran out of
-// context before generating the dashboard (large surveys).
+// time/context before deploying. Delivery is fully script-driven — no LLM HTML
+// generation — so this phase is fast and deterministic.
 function dashboardPhasePrompt(surveyName) {
   return [
-    `The survey analysis for "${surveyName}" has already run this session.`,
-    `Find its working folder: ls -d surveys/${surveyName}/*/  (there is one dated folder).`,
-    `Do ONLY the delivery steps from CLAUDE.md — do NOT re-run the four analysis agents:`,
-    `1. If analysis/consolidated.json is missing in that folder, run the consolidator from the four analysis/*.json files and write consolidated.json.`,
-    `2. Read templates/survey-dashboard.html and analysis/consolidated.json, generate the full multi-tab dashboard following CLAUDE.md's tab, field-name and styling rules exactly, and save it to <folder>/dashboard/index.html.`,
-    `3. Generate the deck: python3 templates/generate-slides.py <folder>/analysis/consolidated.json <folder>/dashboard/${surveyName}.pptx`,
-    `4. Deploy: node upload-dashboard.js --survey ${surveyName} --dir <folder>/dashboard`,
+    `The survey analysis for "${surveyName}" has already run this session. Finish delivery from the files on disk — do NOT re-run the four analysis agents.`,
+    `Run these shell steps in order (use Bash). Let F be the one dated folder under surveys/${surveyName}/ — resolve it with: F=$(ls -d surveys/${surveyName}/*/ | head -1)`,
+    `1. If "$F/analysis/consolidated.json" does not exist, build it: python3 templates/build-consolidated.py "$F/analysis" --survey-name "${surveyName}" --topic "${surveyName}"`,
+    `2. Render the dashboard: mkdir -p "$F/dashboard" && python3 templates/build-dashboard.py "$F/analysis/consolidated.json" templates/survey-dashboard.html "$F/dashboard/index.html"`,
+    `3. Render the deck: python3 templates/generate-slides.py "$F/analysis/consolidated.json" "$F/dashboard/${surveyName}.pptx"`,
+    `4. Deploy: node upload-dashboard.js --survey ${surveyName} --dir "$F/dashboard"`,
     `5. Output the DEPLOYED_URL=... line exactly as printed by upload-dashboard.js, alone on its own line.`,
   ].join('\n');
 }
 
-function runClaude(promptText, model) {
+function runClaude(promptText, model, timeoutMs = PHASE1_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     // Stream JSON so each step (sub-agent spawn, tool call) is visible in the
     // container logs. stream-json requires --verbose in print mode.
@@ -180,7 +199,7 @@ function runClaude(promptText, model) {
     ];
     const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
-      timeout: 3600_000, // 1 hour max
+      timeout: timeoutMs,
     });
 
     let buffer = '';

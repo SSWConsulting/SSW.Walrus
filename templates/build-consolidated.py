@@ -606,6 +606,9 @@ def main():
         "surveyName": survey_name,
         "topic": topic,
         "ruleUrl": args.rule_url or first(qmeta, "ruleUrl", default=None),
+        "ruleTitle": first(qmeta, "ruleTitle", default=None),
+        # the weekly video the team was asked to watch + rate {title, url}
+        "videoWatched": qmeta.get("videoWatched") or None,
         "responseCount": response_count,
         "completionRate": whole(first(qmeta, "completionRate", default=100)) or 100,
         "dateRange": args.date or "",

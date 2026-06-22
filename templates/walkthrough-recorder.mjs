@@ -173,16 +173,6 @@ const caption = async (text) => {
   }, { text });
 };
 
-const titleCard = async (innerHtml) => {
-  await page.goto('about:blank');
-  await page.evaluate(({ html, dark, charcoal }) => {
-    document.body.style.margin = '0';
-    document.body.innerHTML = `<div style="position:fixed;inset:0;background:linear-gradient(135deg,${dark},${charcoal});
-      color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
-      font:500 16px system-ui;text-align:center;padding:64px">${html}</div>`;
-  }, { html: innerHtml, dark: DARK, charcoal: CHARCOAL });
-};
-
 const chapterDivider = async ({ number, title, description, holdMs = 3800 }) => {
   await page.evaluate(({ number, title, description, accent, dark }) => {
     document.getElementById('wt-divider')?.remove();
@@ -209,6 +199,132 @@ const chapterDivider = async ({ number, title, description, holdMs = 3800 }) => 
   });
   await pause(450);
 };
+
+// ---------------------------------------------------------------------------
+// content cards — full-screen designed cards (no dashboard). The video is a
+// showcase of people's actual thoughts: big attributed pull-quotes, theme
+// montages featuring many voices, graph cards, and a whole-team names montage.
+// ---------------------------------------------------------------------------
+const FONT = "'Inter','Segoe UI',system-ui,-apple-system,sans-serif";
+
+// Render arbitrary inner HTML as a full-screen branded card on about:blank.
+const showCard = async (innerHtml) => {
+  await page.goto('about:blank');
+  await page.evaluate(({ html, font, dark, charcoal }) => {
+    document.body.style.margin = '0';
+    document.body.innerHTML = `<div style="position:fixed;inset:0;
+      background:radial-gradient(1200px 800px at 70% -10%, #2a2a2a, ${dark} 60%, ${charcoal});
+      color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      font:500 16px ${font};text-align:center;padding:72px;box-sizing:border-box">${html}</div>`;
+  }, { html: innerHtml, font: FONT, dark: DARK, charcoal: CHARCOAL });
+};
+const titleCard = showCard; // intro/outro reuse the same renderer
+
+const eyebrow = (t) => `<div style="font:700 14px/1 ${FONT};opacity:0.55;letter-spacing:3px;text-transform:uppercase;margin-bottom:18px;color:#fff">${esc(t)}</div>`;
+
+const ytId = (url) => { const m = String(url || '').match(/[?&]v=([\w-]{6,})|youtu\.be\/([\w-]{6,})/); return m ? (m[1] || m[2]) : null; };
+
+function topicCardHtml(ch) {
+  const v = ch.video || {};
+  const id = ytId(v.url);
+  const thumb = id ? `<div style="margin-top:30px;position:relative">
+      <img src="https://img.youtube.com/vi/${id}/hqdefault.jpg" style="width:420px;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,0.5)">
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">
+        <div style="width:74px;height:74px;border-radius:50%;background:${ACCENT}ee;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 24px rgba(0,0,0,0.5)">
+          <div style="width:0;height:0;border-left:24px solid #fff;border-top:15px solid transparent;border-bottom:15px solid transparent;margin-left:6px"></div></div></div></div>` : '';
+  const ratings = (ch.ratings || []).map((r) => `<span style="margin:0 14px"><b style="font-size:26px">${esc(r.value)}</b> <span style="opacity:0.65;font-size:15px">${esc(r.label)}</span></span>`).join('');
+  return `${eyebrow('SSW · Chewing the Fat')}
+    <h1 style="font:800 50px/1.12 ${FONT};margin:0 0 12px;letter-spacing:-1px;max-width:1100px">${esc(ch.title)}</h1>
+    ${v.title ? `<div style="font:500 20px/1.4 ${FONT};opacity:0.78;max-width:820px">This week we watched <b>“${esc(v.title)}”</b></div>` : ''}
+    ${thumb}
+    ${ratings ? `<div style="margin-top:30px;font:500 16px ${FONT};opacity:0.9">${ratings}</div>` : ''}`;
+}
+
+function quoteCardHtml(ch) {
+  return `${ch.context ? `<div style="font:600 15px ${FONT};opacity:0.5;letter-spacing:0.5px;margin-bottom:22px;max-width:780px">${esc(ch.context)}</div>` : ''}
+    <div style="position:relative;max-width:1180px">
+      <div style="position:absolute;left:-44px;top:-40px;font:800 150px ${FONT};color:${ACCENT};opacity:0.35;line-height:1">“</div>
+      <div style="font:600 40px/1.34 ${FONT};letter-spacing:-0.4px">${esc(ch.quote)}</div>
+    </div>
+    <div style="margin-top:40px;display:flex;align-items:center;gap:14px">
+      <div style="width:46px;height:46px;border-radius:50%;background:${ACCENT};display:flex;align-items:center;justify-content:center;font:700 18px ${FONT}">${esc(initialsOf(ch.name))}</div>
+      <div style="text-align:left"><div style="font:700 22px ${FONT}">${esc(ch.name)}</div>
+      ${ch.role ? `<div style="font:500 15px ${FONT};opacity:0.6">${esc(ch.role)}</div>` : ''}</div>
+    </div>`;
+}
+
+function montageCardHtml(ch) {
+  const cards = (ch.quotes || []).map((q) => `
+    <div style="background:rgba(255,255,255,0.05);border-left:3px solid ${ACCENT};border-radius:0 12px 12px 0;padding:18px 22px;text-align:left">
+      <div style="font:500 21px/1.4 ${FONT};margin-bottom:10px">“${esc(q.text)}”</div>
+      <div style="font:700 15px ${FONT};opacity:0.8">— ${esc(q.name)}</div></div>`).join('');
+  return `${eyebrow(ch.heading || 'In their words')}
+    <div style="display:flex;flex-direction:column;gap:16px;width:1180px;max-height:780px;overflow:hidden">${cards}</div>`;
+}
+
+function statCardHtml(ch) {
+  return `${eyebrow(ch.eyebrow || '')}
+    <div style="font:800 130px/1 ${FONT};color:${ACCENT};letter-spacing:-3px">${esc(ch.big)}</div>
+    <div style="font:600 30px/1.3 ${FONT};margin-top:14px;max-width:900px">${esc(ch.label)}</div>
+    ${ch.sub ? `<div style="font:500 19px ${FONT};opacity:0.65;margin-top:14px;max-width:820px">${esc(ch.sub)}</div>` : ''}`;
+}
+
+function namesCardHtml(ch) {
+  const chips = (ch.names || []).map((n) => `<span style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:999px;padding:8px 16px;font:600 17px ${FONT}">${esc(n)}</span>`).join('');
+  return `${eyebrow(ch.eyebrow || 'The whole team')}
+    <h1 style="font:800 46px/1.1 ${FONT};margin:0 0 10px;letter-spacing:-1px">${esc(ch.title || 'Everyone who weighed in')}</h1>
+    <div style="font:500 19px ${FONT};opacity:0.7;margin-bottom:34px">${esc(ch.subtitle || '')}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;max-width:1320px;max-height:640px;overflow:hidden">${chips}</div>`;
+}
+
+function listCardHtml(ch) {
+  const items = (ch.items || []).map((it, i) => `
+    <div style="display:flex;align-items:flex-start;gap:18px;background:rgba(255,255,255,0.05);padding:18px 24px;border-radius:12px;border-left:4px solid ${ACCENT};text-align:left">
+      <span style="font:800 22px ${FONT};color:${ACCENT};min-width:30px">${esc(it.tag || (i + 1))}</span>
+      <div><div style="font:600 21px ${FONT}">${esc(it.title)}</div>
+      ${it.sub ? `<div style="font:500 16px ${FONT};opacity:0.65;margin-top:4px">${esc(it.sub)}</div>` : ''}</div></div>`).join('');
+  return `${eyebrow(ch.eyebrow || '')}
+    <h1 style="font:800 44px/1.1 ${FONT};margin:0 0 30px;letter-spacing:-1px">${esc(ch.title || '')}</h1>
+    <div style="display:flex;flex-direction:column;gap:14px;width:1080px">${items}</div>`;
+}
+
+function initialsOf(name) {
+  const p = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (!p.length) return '?';
+  return (p.length === 1 ? p[0].slice(0, 2) : p[0][0] + p[p.length - 1][0]).toUpperCase();
+}
+
+// Render a Chart.js graph card (bar / doughnut / radar) on about:blank.
+async function graphCard(ch) {
+  await page.goto('about:blank');
+  await page.addScriptTag({ url: 'https://cdn.jsdelivr.net/npm/chart.js' }).catch(() => note('Chart.js failed to load — graph card will be blank'));
+  await page.evaluate(({ ch, font, dark, charcoal, accent }) => {
+    document.body.style.margin = '0';
+    document.body.innerHTML = `<div style="position:fixed;inset:0;
+      background:radial-gradient(1200px 800px at 70% -10%, #2a2a2a, ${dark} 60%, ${charcoal});
+      color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font:500 16px ${font};padding:64px;box-sizing:border-box">
+      <div style="font:700 14px/1 ${font};opacity:0.55;letter-spacing:3px;text-transform:uppercase;margin-bottom:14px">${ch.eyebrow || 'By the numbers'}</div>
+      <h1 style="font:800 40px/1.1 ${font};margin:0 0 8px;letter-spacing:-0.8px">${ch.title || ''}</h1>
+      <div style="font:500 18px ${font};opacity:0.7;margin-bottom:26px;max-width:900px;text-align:center">${ch.caption || ''}</div>
+      <div style="width:1000px;height:540px"><canvas id="g"></canvas></div></div>`;
+    const palette = [accent, '#E25252', '#333333', '#666666', '#A33434', '#888888', '#B0B0B0'];
+    const isRadar = ch.chartType === 'radar';
+    // eslint-disable-next-line no-undef
+    new Chart(document.getElementById('g'), {
+      type: ch.chartType || 'bar',
+      data: { labels: ch.labels, datasets: [{ label: ch.datasetLabel || '', data: ch.data,
+        backgroundColor: ch.chartType === 'bar' ? ch.data.map((_, i) => palette[i % palette.length]) : (isRadar ? accent + '33' : palette),
+        borderColor: accent, borderWidth: isRadar ? 2 : 0, borderRadius: ch.chartType === 'bar' ? 8 : 0, pointBackgroundColor: accent }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: false,
+        indexAxis: ch.horizontal ? 'y' : 'x',
+        plugins: { legend: { display: !!ch.legend, labels: { color: '#fff', font: { size: 16 } } } },
+        scales: isRadar
+          ? { r: { angleLines: { color: '#ffffff22' }, grid: { color: '#ffffff22' }, pointLabels: { color: '#fff', font: { size: 17 } }, ticks: { display: false } } }
+          : { x: { ticks: { color: '#fff', font: { size: 16 } }, grid: { color: '#ffffff14' } }, y: { ticks: { color: '#fff', font: { size: 16 } }, grid: { color: '#ffffff14' }, beginAtZero: true } } },
+    });
+  }, { ch, font: FONT, dark: DARK, charcoal: CHARCOAL, accent: ACCENT });
+  await pause(900); // let the chart paint
+}
 
 // element matcher: text:Exact | text~:Substring | contains:Anywhere | css selector
 const findElSrc = `(matcher) => {
@@ -286,44 +402,66 @@ async function runBeat(b) {
 const recordStart = Date.now();
 const timestamps = [];
 
+function agendaCardHtml(ch) {
+  const items = (ch.kind === 'intro' ? ch.agenda : ch.recap) || [];
+  const mark = ch.kind === 'outro' ? '✓' : null;
+  return `${eyebrow('SSW · Chewing the Fat')}
+    <h1 style="font:800 56px/1.1 ${FONT};margin:0 0 14px;letter-spacing:-1.2px;max-width:1040px">${esc(ch.title || SURVEY)}</h1>
+    <div style="font:500 20px/1.5 ${FONT};opacity:0.72;margin-bottom:40px;max-width:840px">${esc(ch.subtitle || plan.date || '')}</div>
+    ${items.length ? `<div style="display:flex;flex-direction:column;gap:12px;width:780px;text-align:left">
+      ${items.map((t, n) => `<div style="display:flex;align-items:center;gap:18px;background:${ACCENT}22;padding:15px 22px;border-radius:12px;border-left:4px solid ${ACCENT}">
+        <span style="font-weight:800;color:${ACCENT};font-size:15px;letter-spacing:1px;min-width:34px">${mark || ('0' + (n + 1)).slice(-2)}</span>
+        <span style="font:600 18px ${FONT}">${esc(t)}</span></div>`).join('')}</div>` : ''}`;
+}
+
+function sectionCardHtml(ch) {
+  return `<div style="width:80px;height:5px;border-radius:3px;background:${ACCENT};box-shadow:0 0 24px ${ACCENT}88;margin-bottom:30px"></div>
+    ${ch.eyebrow ? `<div style="font:700 15px/1 ${FONT};opacity:0.55;letter-spacing:4px;text-transform:uppercase;margin-bottom:22px">${esc(ch.eyebrow)}</div>` : ''}
+    <h1 style="font:800 60px/1.14 ${FONT};margin:0 0 26px;max-width:1120px;letter-spacing:-1.1px">${esc(ch.title)}</h1>
+    ${ch.subtitle ? `<div style="font:400 24px/1.5 ${FONT};opacity:0.78;max-width:860px">${esc(ch.subtitle)}</div>` : ''}`;
+}
+
 for (let i = 0; i < CHAPTERS.length; i++) {
   const ch = CHAPTERS[i];
   const clip = clips[i];
   timestamps.push(Date.now() - recordStart);
   const showCaption = !clip.hasAudio && clip.text;
 
-  if (ch.kind === 'intro' || ch.kind === 'outro') {
-    const items = (ch.kind === 'intro' ? ch.agenda : ch.recap) || [];
-    const mark = ch.kind === 'outro' ? '✓ ' : '';
-    await titleCard(`
-      <div style="font:600 14px/1 system-ui;opacity:0.6;letter-spacing:2.5px;text-transform:uppercase;margin-bottom:14px">SSW · Free Lunch digest</div>
-      <h1 style="font:800 56px/1.1 system-ui;margin:0 0 14px;letter-spacing:-1.2px;max-width:1000px">${esc(ch.title || SURVEY)}</h1>
-      <div style="font:500 20px/1.5 system-ui;opacity:0.72;margin-bottom:40px;max-width:820px">${esc(ch.subtitle || plan.date || '')}</div>
-      <div style="display:flex;flex-direction:column;gap:12px;width:760px;font:500 18px/1.4 system-ui;text-align:left">
-        ${items.map((t, n) => `<div style="display:flex;align-items:center;gap:18px;background:${ACCENT}22;padding:15px 22px;border-radius:12px;border-left:4px solid ${ACCENT}">
-          <span style="font-weight:700;opacity:0.6;font-size:14px;letter-spacing:1.5px;min-width:54px">${mark || ('0'+(n+1)).slice(-2)}</span>
-          <span style="font-weight:600">${esc(t)}</span></div>`).join('')}
-      </div>`);
-    await lowerThird(null);
-    if (showCaption) await caption(clip.text); else await caption(null);
-    await pause(clip.durationMs + 300);
+  // Legacy dashboard-tour chapter (kept for hybrid/deep-tour plans).
+  if (ch.kind === 'chapter' && ch.beats && ch.beats.length) {
+    await lowerThird({ survey: SURVEY, section: ch.section || ch.title });
+    await caption(null);
+    await chapterDivider({ number: ch.number, title: ch.title, description: ch.dividerText || ch.section || '' });
+    const actionStart = Date.now();
+    if (showCaption) await caption(clip.text);
+    for (const b of ch.beats) {
+      await runBeat(b);
+      await lowerThird({ survey: SURVEY, section: ch.section || ch.title });
+      if (showCaption) await caption(clip.text);
+    }
+    const remaining = clip.durationMs + 250 - (Date.now() - actionStart);
+    if (remaining > 0) await pause(remaining);
+    await caption(null);
     continue;
   }
 
-  // chapter: divider over a blank dark frame, then drive the live dashboard
-  await lowerThird({ survey: SURVEY, section: ch.section || ch.title });
-  await caption(null);
-  await chapterDivider({ number: ch.number, title: ch.title, description: ch.dividerText || ch.section || '' });
-
-  const actionStart = Date.now();
-  if (showCaption) await caption(clip.text);
-  for (const b of (ch.beats || [])) {
-    await runBeat(b);
-    await lowerThird({ survey: SURVEY, section: ch.section || ch.title }); // re-apply (clicks can re-render)
-    if (showCaption) await caption(clip.text);
+  // Content cards — the showcase. Render the card, narrate over it, hold.
+  await lowerThird(null);
+  switch (ch.kind) {
+    case 'intro':
+    case 'outro': await showCard(agendaCardHtml(ch)); break;
+    case 'topic': await showCard(topicCardHtml(ch)); break;
+    case 'section': await showCard(sectionCardHtml(ch)); break;
+    case 'quote': await showCard(quoteCardHtml(ch)); break;
+    case 'montage': await showCard(montageCardHtml(ch)); break;
+    case 'stat': await showCard(statCardHtml(ch)); break;
+    case 'names': await showCard(namesCardHtml(ch)); break;
+    case 'list': await showCard(listCardHtml(ch)); break;
+    case 'graph': await graphCard(ch); break;
+    default: await showCard(quoteCardHtml(ch));
   }
-  const remaining = clip.durationMs + 250 - (Date.now() - actionStart);
-  if (remaining > 0) await pause(remaining);
+  if (showCaption) await caption(clip.text); else await caption(null);
+  await pause(clip.durationMs + 350);
   await caption(null);
 }
 

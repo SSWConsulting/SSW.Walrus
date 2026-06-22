@@ -1,34 +1,39 @@
 ---
 name: record-walkthrough
 description: >
-  Record a short narrated walkthrough video of a generated Walrus survey
-  dashboard — a ~2 minute, chaptered, voice-over tour aimed at the SSW team and
-  leadership. Drives the live (or local) dashboard with Playwright, narrates with
-  a provider-pluggable, env-keyed, hash-cached TTS pipeline (ElevenLabs bundled),
-  overlays chapter dividers + a persistent SURVEY · SECTION lower-third, and muxes
-  one .webm with ffmpeg. Degrades gracefully to burned-in captions when no TTS key
-  is set. Trigger when the user says "record a walkthrough", "make a walkthrough
-  video", "record the survey video", or invokes /record-walkthrough <survey>.
-argument-hint: "<survey-name | dashboard-url> [--fresh]"
+  Record a narrated "people showcase" video from a Walrus survey — a ~3 minute,
+  content-first piece that highlights what the team actually said, attributed by
+  name, so everyone feels seen. Renders designed full-screen cards (the week's
+  topic + the video watched, big pull-quotes whose narration reads each person's
+  own words, theme montages featuring many voices, Chart.js graph cards, the
+  recommendations, and a whole-team names montage) with Playwright + a
+  provider-pluggable, env-keyed, hash-cached TTS pipeline (ElevenLabs bundled),
+  muxed to one .webm with ffmpeg. Degrades to burned-in captions when no TTS key
+  is set. Trigger when the user says "record a walkthrough", "make the survey
+  video", "record the showcase", or invokes /record-walkthrough <survey>.
+argument-hint: "<survey-name> [--fresh]"
 allowed-tools: Bash, Read, Write, Edit, Glob
 ---
 
-# record-walkthrough — narrated tour of a survey dashboard
+# record-walkthrough — a people showcase from a survey
 
-Turns a finished Walrus dashboard into a short, chaptered, narrated screen-capture
-for the team — so people can **watch** the digest in two minutes instead of
-clicking through five tabs. Adapted from the ARMADA `logbook` methodology, but
-specialised to Walrus's single known surface: a **static survey dashboard at a
-URL** (no login, no staging recipe, no multi-surface detection).
+Turns a finished Walrus survey into a short, narrated **showcase of what the team
+actually said** — not a tour of the dashboard (people can click that themselves),
+but a produced piece of designed cards: the week's topic and the video everyone
+watched, big attributed pull-quotes, theme montages, a couple of graphs, and a
+**whole-team names montage so every respondent is seen**. The narration on a quote
+card **reads that person's own words** — that's what makes it land. Adapted from
+the ARMADA `logbook` methodology (env-keyed hash-cached TTS, caption fallback,
+post-record self-check), specialised to Walrus.
 
-Pipeline: plan chapters from `consolidated.json` → render narration (ElevenLabs,
-hash-cached; **captions when no key**) → Playwright drives the dashboard tabs and
-spotlights the narrated section → ffmpeg muxes one `.webm` with a chapter divider
-+ persistent lower-third + a post-record self-check.
+Pipeline: build a content-card plan from `consolidated.json` → render narration
+(ElevenLabs, hash-cached; **captions when no key**) → Playwright renders each
+designed card and the voice narrates over it → ffmpeg muxes one `.webm` with a
+post-record self-check.
 
-The capture/synthesis/mux engine is **`templates/walkthrough-recorder.mjs`**; the
-plan builder is **`templates/build-walkthrough-plan.py`**. This skill is the
-procedure — let the scripts do the work.
+The render engine is **`templates/walkthrough-recorder.mjs`**; the plan builder is
+**`templates/build-walkthrough-plan.py`**. This skill is the procedure — let the
+scripts do the work.
 
 ## 0. Preflight
 
@@ -43,51 +48,53 @@ Check the toolchain and **name** anything that will degrade rather than failing:
   says so — this is a supported mode, not a failure. Never put the key in a flag,
   a file, a commit, or chat — env only.
 
-## 1. Resolve the dashboard + consolidated.json
+## 1. Resolve consolidated.json
 
-The video is rendered against a **deployed** dashboard URL (preferred — it's the
-real artifact) or a local `index.html` via a `file://` path.
+The showcase renders self-contained cards from the digest — it does **not** need
+the deployed dashboard. Just point at:
 
 - `consolidated.json`: `surveys/<survey>/<date>/analysis/consolidated.json`.
-- Dashboard URL: the `DEPLOYED_URL` from the process-survey run
-  (`https://<base>/<survey>/`), or `file://<abs path>/index.html` for a local
-  render.
 
-## 2. Plan the chapters, then refine the narration
+It uses `metadata.videoWatched` (the week's video — the quantitative agent must
+capture it), the attributed quotes (`standoutResponses`, `notableQuotes`, theme
+`allQuotes`, free-text), the rating/choice questions (graphs), `recommendations`,
+and `people.respondents` (the names montage). If `videoWatched` is missing, the
+topic card just omits the thumbnail.
 
-Generate the runnable plan (chapters + beats + a default PO-facing narration)
-from the digest:
+## 2. Build the plan, then refine the narration
+
+Generate the content-card deck from the digest:
 
 ```bash
 python3 templates/build-walkthrough-plan.py \
   surveys/<survey>/<date>/analysis/consolidated.json \
-  --url "<dashboard-url>" \
   --out surveys/<survey>/<date>/walkthrough/plan.json
 ```
 
-It writes **6 chapters**: intro/agenda → **The verdict** (Overview) → **How it
-scored** (Responses) → **What the team said** (Themes) → **What SSW should do**
-(Insights) → outro/recap, each with beats that drive the real tabs and spotlight
-the narrated section.
+It writes ~20 cards: **intro** → **topic** (the video + ratings) → **stat** →
+section **Where it wins** + several **quote** cards → a **montage** → two **graph**
+cards (ratings + tool tally) → section **The honest feedback** + contrarian
+**quote** cards → a **list** (recommendations) → a **names** montage (every
+respondent) → **outro**. Card kinds: `intro`/`outro`, `topic`, `section`, `stat`,
+`quote` (`{quote,name,context}`), `montage` (`{heading,quotes[]}`), `graph`
+(`{chartType,labels,data,horizontal,caption}`), `list`, `names`.
 
-**Then refine the `narration` field of each chapter** — this is the craft, and a
-few hundred words, so do it by hand (edit `plan.json`). Rules:
+**Then refine the `narration` field** — this is the craft. Each `quote` card's
+narration should **read the person's own words**, with a varied lead-in
+("`<Name>` put it this way.", "For `<Name>`,", "`<Name>` pushed back:"). Rules:
 
-- **Speak to the team/leadership, about the topic — not the build.** Say what the
-  team thinks and what we should do; never mention JSON, tabs-as-tabs, fields, or
-  how the dashboard was made.
-- **Ban:** field names, file paths, "the dashboard shows…", percentages read as
-  raw data dumps. Lead with the finding, support with one number.
-- **Tight:** a few sentences per chapter, ~25-40s each, ~2:00-2:30 total.
-- **Present tense, third person, plain language.** Fix the generator's grammar
-  nits (e.g. "about *Do you use AI CLI tools*" → "about whether the team uses AI
-  CLI tools"; "it's *a* A-" → "it's an A-minus").
-- Keep the beats as-is unless a spotlight target doesn't exist on the page.
-
-You may also adjust `beats` (a beat is `{action, target|value, ms}`): `goto`,
-`clickTab` (tab name), `spotlight` (`text~:Heading` etc.), `scrollTo`, `expand`,
-`click`, `wait`. Matchers: `text:Exact` | `text~:Substring` | `contains:Anywhere`
-| any CSS selector.
+- **Make people feel seen** — name them, quote them, give airtime to many voices
+  (the generator already spreads across distinct people; keep it that way).
+- **Speak to the team, about the topic — not the build.** No field names, file
+  paths, or "the dashboard shows…".
+- **Curate the quotes:** the generator picks each person's longest substantive
+  answer; swap in a punchier line if there's a better one, and trim rambly/URL-y
+  bits (the card shows what the narration reads).
+- **Present tense, plain language.** Fix grammar nits ("it's *a* A-" → "an
+  A-minus"). Target the length the user asked for (~3 min default; "long-winded"
+  ⇒ feature more people, longer).
+- You can reorder cards, add/remove `quote`/`montage` cards, or add a `stat`/
+  `graph`. Keep the **names** montage last-but-one so everyone appears.
 
 ## 3. Record
 

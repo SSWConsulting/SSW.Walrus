@@ -22,6 +22,7 @@ This is NOT an employee-engagement survey. Do not produce health scores, grades,
 
 ## Your task
 
+0. **Capture the week's context from the question headers** — the **video** the team was asked to watch (its title + URL, usually embedded in the "Watch this video…and give it a rating" header) and the **rule** title + URL (from the "Read the rule…" header). Put these in `metadata.videoWatched` and `metadata.ruleTitle`/`ruleUrl` — they're the "this week we watched X / the rule was Y" context the digest and walkthrough lean on.
 1. **Classify every column** into one of the types above.
 2. For each **content rating (1-5)**: mean (1 decimal), distribution (count at each point), skip rate, individual responses, and a 1-2 sentence commentary on the topic reception (NOT morale).
 3. For each **single/multi-select and categorical** question: tally each option (label + count + percent), note the clear winner / long tail, and list individual responses. For multi-select, split on `;` and strip `N.` prefixes before tallying.
@@ -38,6 +39,8 @@ Use whole numbers for stats in prose.
     "totalResponses": 79,
     "topic": "Do you use AI CLI tools?",
     "ruleUrl": "https://www.ssw.com.au/rules/ai-cli-tools",
+    "ruleTitle": "Do you use AI CLI tools?",
+    "videoWatched": { "title": "You've Been Using AI the Hard Way (Use This Instead)", "url": "https://www.youtube.com/watch?v=MsQACpcuTkU" },
     "completionRate": 92
   },
 

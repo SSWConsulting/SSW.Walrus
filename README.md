@@ -1,6 +1,14 @@
 # SSW.Walrus
 
-Automated survey analysis pipeline. Every Monday at 8am AEST, SSW.Walrus checks a SharePoint folder for new survey CSV/XLSX files, processes them with Claude Code CLI, deploys HTML dashboards to surge.sh, uploads PPTX slide decks to SharePoint, and sends Teams notifications.
+Automated survey analysis pipeline. Every Monday at 8am AEST, a Power Automate flow
+sweeps a SharePoint folder for new survey CSV/XLSX files, hands them to Azure for
+processing with the Claude Code CLI, deploys HTML dashboards to an Azure Blob static
+website, and a second Power Automate flow emails the deliverable (dashboard link +
+PPTX) to leadership.
+
+Ingress and egress run through **Power Automate** (standard connectors, under a
+service account), so there is **no Azure AD App Registration and no admin consent** —
+see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
 
 ## Architecture
 
@@ -8,30 +16,34 @@ Automated survey analysis pipeline. Every Monday at 8am AEST, SSW.Walrus checks 
 Monday 8am AEST
        │
        ▼
-┌─────────────────────────────────┐
-│  Timer Function (CheckForSurveys)│
-│  List SharePoint files          │
-│  Check processed-surveys.json   │
-│  Queue new files                │
-└───────────────┬─────────────────┘
+┌───────────────────────────────────┐
+│  Power Automate — Flow A           │   Recurrence trigger (Mon 8am AEST)
+│  List SharePoint folder            │
+│  For each new CSV/XLSX:            │
+│    → blob: survey-inbox/{file}     │
+│    → queue: survey-processing      │
+│    → move file to Processed/       │   (dedup)
+└───────────────┬───────────────────┘
                 ▼
-┌─────────────────────────────────┐
-│  Queue: survey-processing       │
-└───────────────┬─────────────────┘
+┌───────────────────────────────────┐
+│  Function: ProcessSurveyQueue      │   queue trigger → managed identity
+│  Start Container App Job           │
+└───────────────┬───────────────────┘
                 ▼
-┌─────────────────────────────────┐
-│  Queue Function                 │
-│  Start Container App Job        │
-└───────────────┬─────────────────┘
+┌───────────────────────────────────┐
+│  Container App Job (processor.js)  │
+│  1. Download survey-inbox blob     │
+│  2. Claude Code /process-survey    │
+│  3. Dashboard → Azure $web         │
+│  4. PPTX → survey-results blob     │
+│  5. queue: survey-done             │
+└───────────────┬───────────────────┘
                 ▼
-┌─────────────────────────────────┐
-│  Container App Job              │
-│  1. Download CSV/XLSX from SP   │
-│  2. Claude Code /process-survey │
-│  3. Deploy dashboard → surge.sh │
-│  4. Upload PPTX → SharePoint    │
-│  5. Teams notification          │
-└─────────────────────────────────┘
+┌───────────────────────────────────┐
+│  Power Automate — Flow B           │   survey-done queue trigger
+│  Get PPTX from blob                │
+│  Email dashboard link + PPTX       │
+└───────────────────────────────────┘
 ```
 
 ## Azure Resources
@@ -40,43 +52,33 @@ Monday 8am AEST
 |----------|--------|---------|
 | Managed Identity | `id-walrus-{env}` | Auth for all Azure services |
 | Key Vault | `kv-walrus-{env}` | Secrets storage (RBAC-enabled) |
-| Storage Account | `sawalrus{env}` | Queue (`survey-processing`) + Blob (`survey-state`) |
+| Storage Account | `sawalrus{env}` | Queues (`survey-processing`, `survey-done`) + Blobs (`survey-inbox`, `survey-results`) |
+| Dashboard Storage | `sawalrus{env}web` | Static website (`$web`) hosting for dashboards |
 | Log Analytics | `log-walrus-{env}` | Centralized logging |
 | App Insights | `ai-walrus-{env}` | Application monitoring |
 | Container App Env | `ce-walrus-{env}` | Container runtime environment |
 | Container App Job | `job-walrus-{env}` | Claude Code processor |
-| Function App | `func-walrus-{env}` | Timer + Queue triggers |
-| Logic App | `walrusNotify` | Teams notifications |
+| Function App | `func-walrus-{env}` | Queue trigger → starts the Container App Job |
 
-## App Registration Setup
+The container's managed identity is granted **Storage Blob Data Contributor** and
+**Storage Queue Data Contributor** on `sawalrus{env}`, and **Storage Blob Data
+Contributor** on `sawalrus{env}web` — so it reads/writes blobs and enqueues
+`survey-done` without any keys in code.
 
-Create a new Azure AD App Registration for SSW.Walrus.
+## Power Automate Flows
 
-### Required Graph API Permissions (Application)
+The SharePoint ingress and the email delivery are two Power Automate flows owned by
+a service account. Full build instructions (triggers, actions, connections, DLP
+notes) are in [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
 
-| Permission | Purpose |
-|---|---|
-| `Sites.Read.All` | List and read files from SharePoint site |
-| `Files.ReadWrite.All` | Upload PPTX results to SharePoint |
+## Key Vault Secrets
 
-> The Logic App handles Teams notifications via the Teams connector (configured in Azure Portal), so `ChannelMessage.Send` is not needed.
-
-### Key Vault Secrets
-
-After deployment, populate these secrets in `kv-walrus-{env}`:
+After deployment, populate these in `kv-walrus-{env}`:
 
 | Secret | Value |
 |---|---|
-| `graph-client-id` | App Registration client ID |
-| `graph-client-secret` | App Registration client secret |
-| `graph-tenant-id` | Azure AD tenant ID |
 | `anthropic-oauth-token` | Claude Code OAuth token |
-| `surge-email` | surge.sh account email |
-| `surge-token` | surge.sh deploy token |
 | `ghcr-token` | GitHub Container Registry PAT |
-| `logic-app-url` | Logic App HTTP trigger URL (set after manual config) |
-| `sharepoint-site-id` | SharePoint site ID |
-| `sharepoint-drive-id` | Document library drive ID |
 
 ## Infrastructure Deployment
 
@@ -100,37 +102,23 @@ az deployment group create \
 
 ### Post-Deployment
 
-1. Populate Key Vault secrets (see table above)
-2. Configure Logic App Teams connector in Azure Portal
+1. Populate Key Vault secrets (see table above).
+2. Enable static website hosting on the dashboard storage account (one-off, data-plane):
+   ```bash
+   az storage blob service-properties update \
+     --account-name sawalrusstagingweb \
+     --static-website --index-document index.html --404-document index.html
+   ```
 3. Deploy Azure Functions:
    ```bash
    cd azure-function && npm install
    func azure functionapp publish func-walrus-staging
    ```
-
-## SharePoint Site/Drive Discovery
-
-Find your SharePoint site ID and drive ID using Graph Explorer or CLI:
-
-```bash
-# Find site ID
-curl -H "Authorization: Bearer $TOKEN" \
-  "https://graph.microsoft.com/v1.0/sites?search=SSW Free Lunch"
-
-# Find drive ID (document library)
-curl -H "Authorization: Bearer $TOKEN" \
-  "https://graph.microsoft.com/v1.0/sites/{site-id}/drives"
-```
-
-## Logic App Configuration
-
-After Bicep deployment, manually configure the Teams connector:
-
-1. Open `walrusNotify` Logic App in Azure Portal
-2. Add a "Post message in a chat or channel" action after the HTTP trigger
-3. Connect to Teams with an authorized account
-4. Configure the channel for notifications
-5. Copy the Logic App HTTP trigger URL to Key Vault as `logic-app-url`
+4. Grab the storage account key for the Power Automate connections:
+   ```bash
+   az storage account keys list -n sawalrusstaging --query '[0].value' -o tsv
+   ```
+5. Build the two Power Automate flows — see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
 
 ## Local Development
 
@@ -142,9 +130,14 @@ SURVEY_FILE=path/to/survey.csv docker compose up
 claude -p "/process-survey path/to/survey.csv"
 ```
 
+Local runs have no `DASHBOARD_STORAGE_ACCOUNT`/`STORAGE_ACCOUNT` env, so the deploy
+and notify steps are skipped — the dashboard is generated under
+`surveys/{name}/{date}/dashboard/` and reported as a local path rather than published.
+
 ## GitHub Actions
 
-The `build-container.yml` workflow automatically builds and pushes the Docker image to `ghcr.io` on pushes to `main` that modify relevant files.
+The `build-container.yml` workflow automatically builds and pushes the Docker image
+to `ghcr.io` on pushes to `main` that modify relevant files.
 
 ## Environment Variables
 
@@ -152,11 +145,13 @@ The `build-container.yml` workflow automatically builds and pushes the Docker im
 
 | Variable | Source | Description |
 |----------|--------|-------------|
-| `SHAREPOINT_FILE_IDS` | Queue message | Comma-separated SharePoint file IDs |
+| `INBOX_BLOB` | Queue message | Blob name in `survey-inbox` to process |
 | `SURVEY_NAME` | Queue message | Sanitized survey name |
-| `SHAREPOINT_SITE_ID` | Queue message | SharePoint site ID |
-| `SHAREPOINT_DRIVE_ID` | Queue message | SharePoint drive ID |
-| `KEY_VAULT_URL` | Bicep | Key Vault URL for secrets |
+| `FILE_NAME` | Queue message | Original file name (with extension) |
+| `STORAGE_ACCOUNT` | Bicep | Main storage account (inbox/results/done) |
+| `DASHBOARD_STORAGE_ACCOUNT` | Bicep | Static website storage account for dashboards |
+| `DASHBOARD_BASE_URL` | Bicep | Static website host used to build the public dashboard URL |
+| `KEY_VAULT_URL` | Bicep | Key Vault URL (for the Claude OAuth token) |
 | `CLAUDE_MODEL` | Bicep | Claude model (default: claude-sonnet-4-6) |
 | `AZURE_CLIENT_ID` | Bicep | Managed identity client ID |
 
@@ -164,11 +159,7 @@ The `build-container.yml` workflow automatically builds and pushes the Docker im
 
 | Variable | Source | Description |
 |----------|--------|-------------|
-| `GRAPH_CLIENT_ID` | Key Vault ref | App Registration client ID |
-| `GRAPH_CLIENT_SECRET` | Key Vault ref | App Registration client secret |
-| `GRAPH_TENANT_ID` | Key Vault ref | Azure AD tenant ID |
-| `SHAREPOINT_SITE_ID` | Key Vault ref | SharePoint site ID |
-| `SHAREPOINT_DRIVE_ID` | Key Vault ref | SharePoint drive ID |
+| `AzureWebJobsStorage` | Bicep | Functions runtime + `survey-processing` queue trigger |
+| `AZURE_CLIENT_ID` | Bicep | Managed identity client ID (starts the job) |
 | `CONTAINER_APP_JOB_NAME` | Bicep | Container App Job name |
 | `RESOURCE_GROUP` | Bicep | Resource group name |
-| `WEBSITE_TIME_ZONE` | Bicep | `AUS Eastern Standard Time` |

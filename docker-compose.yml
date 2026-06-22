@@ -6,17 +6,15 @@ services:
     environment:
       - SURVEY_FILE=${SURVEY_FILE:-}
       - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
-      - SURGE_TOKEN=${SURGE_TOKEN:-}
-      - SURGE_LOGIN=${SURGE_LOGIN:-}
-      # For Azure mode (optional)
-      - SHAREPOINT_FILE_IDS=${SHAREPOINT_FILE_IDS:-}
+      # Azure mode (set by the Container App Job; optional locally)
+      - INBOX_BLOB=${INBOX_BLOB:-}
       - SURVEY_NAME=${SURVEY_NAME:-}
-      - SHAREPOINT_SITE_ID=${SHAREPOINT_SITE_ID:-}
-      - SHAREPOINT_DRIVE_ID=${SHAREPOINT_DRIVE_ID:-}
-      - GRAPH_CLIENT_ID=${GRAPH_CLIENT_ID:-}
-      - GRAPH_CLIENT_SECRET=${GRAPH_CLIENT_SECRET:-}
-      - GRAPH_TENANT_ID=${GRAPH_TENANT_ID:-}
-      - LOGIC_APP_URL=${LOGIC_APP_URL:-}
+      - FILE_NAME=${FILE_NAME:-}
+      - STORAGE_ACCOUNT=${STORAGE_ACCOUNT:-}
+      - DASHBOARD_STORAGE_ACCOUNT=${DASHBOARD_STORAGE_ACCOUNT:-}
+      - DASHBOARD_BASE_URL=${DASHBOARD_BASE_URL:-}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - KEY_VAULT_URL=${KEY_VAULT_URL:-}
     volumes:
       - ./surveys:/app/surveys
       - ./downloads:/app/downloads

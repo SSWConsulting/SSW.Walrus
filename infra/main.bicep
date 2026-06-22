@@ -1,3 +1,14 @@
+// SSW.Walrus - Main Infrastructure Orchestration
+// Survey analysis pipeline: SharePoint -> Claude -> Azure-hosted dashboard -> Teams
+//
+// Deploy: az deployment group create -g <rg> --template-file main.bicep --parameters staging.bicepparam
+
+targetScope = 'resourceGroup'
+
+type CostCategoryTag = {
+  'cost-category': 'dev/test' | 'value' | 'core'
+}
+
 @description('Project name')
 param project string = 'walrus'
 
@@ -21,64 +32,80 @@ param imageTag string = 'latest'
 param claudeModel string = 'claude-sonnet-4-6'
 
 @description('Cost category tag for billing')
-param costCategoryTag string = 'SSW.Walrus'
+param costCategoryTag CostCategoryTag
+
+@description('Unique suffix for deployment names (safe to re-deploy)')
+param suffix string = take(uniqueString(utcNow()), 6)
 
 // 1. Managed Identity
 module managedIdentity 'modules/managedIdentity.bicep' = {
-  name: 'managedIdentity'
+  name: 'provision-managed-identity-${suffix}'
   params: {
     project: project
     environment: environment
     location: location
+    costCategoryTag: costCategoryTag
   }
 }
 
 // 2. Key Vault
 module keyVault 'modules/keyVault.bicep' = {
-  name: 'keyVault'
+  name: 'provision-keyvault-${suffix}'
   params: {
     project: project
     environment: environment
     location: location
+    costCategoryTag: costCategoryTag
   }
 }
 
-// 3. Key Vault Role Assignment (identity → KV Secrets User)
+// 3. Key Vault Role Assignment (identity -> KV Secrets User)
 module keyVaultRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
-  name: 'keyVaultRoleAssignment'
+  name: 'provision-keyvault-role-${suffix}'
   params: {
     keyVaultName: keyVault.outputs.name
     principalId: managedIdentity.outputs.principalId
   }
-  dependsOn: [
-    keyVault
-    managedIdentity
-  ]
 }
 
-// 4. Storage (queue + blob)
+// 4a. Storage (queues + inbox/results blobs; Power Automate <-> container bridge)
 module storage 'modules/storage.bicep' = {
-  name: 'storage'
+  name: 'provision-storage-${suffix}'
   params: {
     project: project
     environment: environment
     location: location
+    costCategoryTag: costCategoryTag
+    managedIdentityPrincipalId: managedIdentity.outputs.principalId
+  }
+}
+
+// 4b. Dashboard Storage (static website hosting for survey dashboards)
+module dashboardStorage 'modules/dashboardStorage.bicep' = {
+  name: 'provision-dashboard-storage-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    location: location
+    costCategoryTag: costCategoryTag
+    managedIdentityPrincipalId: managedIdentity.outputs.principalId
   }
 }
 
 // 5. Monitoring (Log Analytics + App Insights)
 module monitoring 'modules/monitoring.bicep' = {
-  name: 'monitoring'
+  name: 'provision-monitoring-${suffix}'
   params: {
     project: project
     environment: environment
     location: location
+    costCategoryTag: costCategoryTag
   }
 }
 
 // 6. Container App Environment + Job
 module containerApp 'modules/containerApp.bicep' = {
-  name: 'containerApp'
+  name: 'provision-container-app-${suffix}'
   params: {
     project: project
     environment: environment
@@ -86,10 +113,14 @@ module containerApp 'modules/containerApp.bicep' = {
     logAnalyticsCustomerId: monitoring.outputs.logAnalyticsCustomerId
     logAnalyticsSharedKey: monitoring.outputs.logAnalyticsSharedKey
     managedIdentityId: managedIdentity.outputs.id
+    managedIdentityClientId: managedIdentity.outputs.clientId
     keyVaultUrl: keyVault.outputs.keyVaultUrl
     githubOrg: githubOrg
     imageTag: imageTag
     claudeModel: claudeModel
+    storageAccountName: storage.outputs.name
+    dashboardStorageAccountName: dashboardStorage.outputs.name
+    dashboardBaseUrl: dashboardStorage.outputs.staticWebsiteHost
     costCategoryTag: costCategoryTag
   }
   dependsOn: [
@@ -97,19 +128,9 @@ module containerApp 'modules/containerApp.bicep' = {
   ]
 }
 
-// 7. Logic App (Teams notifications)
-module logicApp 'modules/logicApp.bicep' = {
-  name: 'logicApp'
-  params: {
-    project: project
-    location: location
-    costCategoryTag: costCategoryTag
-  }
-}
-
-// 8. Function App (Timer + Queue triggers)
+// 7. Function App (Queue trigger -> starts the Container App Job)
 module functionApp 'modules/functionApp.bicep' = {
-  name: 'functionApp'
+  name: 'provision-function-app-${suffix}'
   params: {
     project: project
     environment: environment
@@ -132,6 +153,7 @@ output managedIdentityClientId string = managedIdentity.outputs.clientId
 output keyVaultName string = keyVault.outputs.name
 output keyVaultUrl string = keyVault.outputs.keyVaultUrl
 output storageAccountName string = storage.outputs.name
+output dashboardStorageAccountName string = dashboardStorage.outputs.name
+output dashboardStaticWebsiteHost string = dashboardStorage.outputs.staticWebsiteHost
 output containerAppJobName string = containerApp.outputs.jobName
 output functionAppName string = functionApp.outputs.name
-output logicAppName string = logicApp.outputs.name

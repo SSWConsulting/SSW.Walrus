@@ -11,12 +11,12 @@ app.storageQueue('ProcessSurveyQueue', {
   connection: 'AzureWebJobsStorage',
   handler: async (message, context) => {
     const queueMessage = typeof message === 'string' ? JSON.parse(message) : message;
-    const { fileId, fileName, surveyName, siteId, driveId } = queueMessage;
+    const { blobName, fileName, surveyName } = queueMessage;
 
     context.log(`Processing queue message for: ${fileName} (survey: ${surveyName})`);
 
     // Dedup check
-    const dedupKey = `${fileId}_${surveyName}`;
+    const dedupKey = `${blobName}_${surveyName}`;
     const now = Date.now();
 
     // Clean expired entries
@@ -55,10 +55,8 @@ app.storageQueue('ProcessSurveyQueue', {
             {
               name: 'walrus-processor',
               env: [
-                { name: 'SHAREPOINT_FILE_IDS', value: fileId },
+                { name: 'INBOX_BLOB', value: blobName },
                 { name: 'SURVEY_NAME', value: surveyName },
-                { name: 'SHAREPOINT_SITE_ID', value: siteId },
-                { name: 'SHAREPOINT_DRIVE_ID', value: driveId },
                 { name: 'FILE_NAME', value: fileName },
               ],
             },

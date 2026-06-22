@@ -2,7 +2,7 @@
 
 ## What This System Does
 
-When a user provides a CSV/XLSX survey export, the system runs 4 specialized AI analysis agents in parallel, consolidates their outputs, generates a multi-tab HTML dashboard and PPTX slide deck, and deploys to surge.sh.
+When a user provides a CSV/XLSX survey export, the system runs 4 specialized AI analysis agents in parallel, consolidates their outputs, generates a multi-tab HTML dashboard and PPTX slide deck, and deploys to an Azure Blob static website.
 
 ## Architecture at a Glance
 
@@ -21,7 +21,7 @@ Survey Export (CSV/XLSX)
   │ 3. Run consolidator                  │
   │ 4. Generate dashboard from template  │
   │ 4.5 Generate PPTX slide deck        │
-  │ 5. Deploy to surge.sh               │
+  │ 5. Deploy to Azure Blob static site │
   └──────────────────────────────────────┘
        │
        ▼

@@ -6,4 +6,4 @@ param location = 'australiaeast'
 param githubOrg = 'SSWConsulting'
 param imageTag = 'latest'
 param claudeModel = 'claude-sonnet-4-6'
-param costCategoryTag = 'SSW.Walrus'
+param costCategoryTag = { 'cost-category': 'value' }

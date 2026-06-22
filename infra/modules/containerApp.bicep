@@ -17,6 +17,9 @@ param logAnalyticsSharedKey string
 @description('User-assigned managed identity ID')
 param managedIdentityId string
 
+@description('User-assigned managed identity client ID')
+param managedIdentityClientId string
+
 @description('Key Vault URL')
 param keyVaultUrl string
 
@@ -29,12 +32,22 @@ param imageTag string
 @description('Claude model to use')
 param claudeModel string
 
+@description('Main storage account name (survey-inbox / survey-results / survey-done)')
+param storageAccountName string
+
+@description('Dashboard storage account name (static website hosting)')
+param dashboardStorageAccountName string
+
+@description('Dashboard static website host, e.g. sawalrusstagingweb.z8.web.core.windows.net')
+param dashboardBaseUrl string
+
 @description('Cost category tag')
-param costCategoryTag string
+param costCategoryTag object
 
 var environmentName = 'ce-${project}-${environment}'
 var jobName = 'job-${project}-${environment}'
-var containerImage = 'ghcr.io/${githubOrg}/walrus-processor:${imageTag}'
+// OCI image references must be lowercase
+var containerImage = 'ghcr.io/${toLower(githubOrg)}/walrus-processor:${imageTag}'
 
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-11-02-preview' = {
   name: environmentName
@@ -48,9 +61,7 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-11-02-p
       }
     }
   }
-  tags: {
-    CostCategory: costCategoryTag
-  }
+  tags: costCategoryTag
 }
 
 resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
@@ -99,7 +110,7 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
           env: [
             {
               name: 'AZURE_CLIENT_ID'
-              value: ''
+              value: managedIdentityClientId
             }
             {
               name: 'KEY_VAULT_URL'
@@ -109,14 +120,24 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
               name: 'CLAUDE_MODEL'
               value: claudeModel
             }
+            {
+              name: 'STORAGE_ACCOUNT'
+              value: storageAccountName
+            }
+            {
+              name: 'DASHBOARD_STORAGE_ACCOUNT'
+              value: dashboardStorageAccountName
+            }
+            {
+              name: 'DASHBOARD_BASE_URL'
+              value: dashboardBaseUrl
+            }
           ]
         }
       ]
     }
   }
-  tags: {
-    CostCategory: costCategoryTag
-  }
+  tags: costCategoryTag
 }
 
 output environmentId string = containerAppEnvironment.id

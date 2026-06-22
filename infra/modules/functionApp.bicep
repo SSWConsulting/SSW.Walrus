@@ -27,7 +27,7 @@ param appInsightsConnectionString string
 param containerAppJobName string
 
 @description('Cost category tag')
-param costCategoryTag string
+param costCategoryTag object
 
 var functionAppName = 'func-${project}-${environment}'
 var hostingPlanName = 'plan-${project}-${environment}'
@@ -80,10 +80,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: '~20'
         }
         {
-          name: 'WEBSITE_TIME_ZONE'
-          value: 'AUS Eastern Standard Time'
-        }
-        {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: appInsightsConnectionString
         }
@@ -96,26 +92,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           value: keyVaultUrl
         }
         {
-          name: 'GRAPH_CLIENT_ID'
-          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUrl}secrets/graph-client-id)'
-        }
-        {
-          name: 'GRAPH_CLIENT_SECRET'
-          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUrl}secrets/graph-client-secret)'
-        }
-        {
-          name: 'GRAPH_TENANT_ID'
-          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUrl}secrets/graph-tenant-id)'
-        }
-        {
-          name: 'SHAREPOINT_SITE_ID'
-          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUrl}secrets/sharepoint-site-id)'
-        }
-        {
-          name: 'SHAREPOINT_DRIVE_ID'
-          value: '@Microsoft.KeyVault(SecretUri=${keyVaultUrl}secrets/sharepoint-drive-id)'
-        }
-        {
           name: 'CONTAINER_APP_JOB_NAME'
           value: containerAppJobName
         }
@@ -126,9 +102,7 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
       ]
     }
   }
-  tags: {
-    CostCategory: costCategoryTag
-  }
+  tags: costCategoryTag
 }
 
 output name string = functionApp.name

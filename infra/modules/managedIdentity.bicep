@@ -7,11 +7,15 @@ param environment string
 @description('Azure region')
 param location string
 
+@description('Cost category tag')
+param costCategoryTag object
+
 var identityName = 'id-${project}-${environment}'
 
 resource managedIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: identityName
   location: location
+  tags: costCategoryTag
 }
 
 output id string = managedIdentity.id

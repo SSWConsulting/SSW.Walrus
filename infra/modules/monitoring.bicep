@@ -7,12 +7,16 @@ param environment string
 @description('Azure region')
 param location string
 
+@description('Cost category tag')
+param costCategoryTag object
+
 var logAnalyticsName = 'log-${project}-${environment}'
 var appInsightsName = 'ai-${project}-${environment}'
 
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
   name: logAnalyticsName
   location: location
+  tags: costCategoryTag
   properties: {
     sku: {
       name: 'PerGB2018'
@@ -24,6 +28,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
+  tags: costCategoryTag
   kind: 'web'
   properties: {
     Application_Type: 'web'

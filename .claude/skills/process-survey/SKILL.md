@@ -40,7 +40,7 @@ When multiple files are provided, each file is treated as a separate survey "sec
 4. ✅ Runs **consolidation** to ensure consistency and deduplication
 5. ✅ Creates a **multi-tab HTML dashboard** with rich insights
 6. ✅ Generates a **PPTX slide deck** for presentations
-7. ✅ Deploys to **surge.sh**
+7. ✅ Deploys to **Azure Blob static website**
 8. ✅ Returns a **public URL**
 
 ## NEVER DO
@@ -408,17 +408,17 @@ python3 templates/generate-slides.py \
 
 This produces a branded PowerPoint alongside the HTML dashboard. If the script fails (e.g., missing `python-pptx`), install it with `pip3 install python-pptx` and retry.
 
-### Step 5: Deploy to Surge.sh
+### Step 5: Deploy to Azure Blob static website
 
 ```bash
-cd surveys/{survey-name}/{date}/dashboard
-surge . {deploy-url}
+node upload-dashboard.js --survey {survey-name} --dir surveys/{survey-name}/{date}/dashboard
 ```
 
-**Deploy URL generation:**
-- Format: `{survey-name}-{date}.surge.sh`
-- Sanitize: lowercase, replace spaces with hyphens, remove special chars
-- Truncate domain to max 35 characters if needed
+- Uploads the dashboard to the `$web` container of the dashboard storage account using the container's managed identity (no credentials needed).
+- The `.pptx` is skipped — it is left in the dashboard folder; `processor.js` uploads it to the `survey-results` blob and Power Automate emails it (outside this skill).
+- Prints the public URL as a `DEPLOYED_URL=...` line. Read that line — you echo it in Step 6.
+- URL form: `https://{DASHBOARD_BASE_URL}/{survey-name}/` (e.g. `https://sawalrusstagingweb.z8.web.core.windows.net/q1-engagement/`)
+- `DASHBOARD_STORAGE_ACCOUNT` and `DASHBOARD_BASE_URL` are provided as env vars on the Container App Job. On a local run without them, skip deployment and just report the local dashboard path.
 
 ### Step 6: Report Success
 

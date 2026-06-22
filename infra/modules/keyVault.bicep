@@ -7,11 +7,15 @@ param environment string
 @description('Azure region')
 param location string
 
+@description('Cost category tag')
+param costCategoryTag object
+
 var keyVaultName = 'kv-${project}-${environment}'
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
   location: location
+  tags: costCategoryTag
   properties: {
     sku: {
       family: 'A'
@@ -21,7 +25,8 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enableRbacAuthorization: true
     enableSoftDelete: true
     softDeleteRetentionInDays: 7
-    enablePurgeProtection: false
+    // Required by tenant policy; irreversible once enabled.
+    enablePurgeProtection: true
   }
 }
 

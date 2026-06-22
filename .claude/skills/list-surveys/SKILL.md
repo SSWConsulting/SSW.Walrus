@@ -17,7 +17,7 @@ Show all processed surveys and their analysis history.
    - Date range of analyses (earliest to latest)
    - Most recent analysis date
    - Whether a dashboard exists
-   - Whether it was deployed (check for surge deployment)
+   - Whether it was deployed (check for the Azure Blob static website URL)
 
 3. Display in a formatted overview
 
@@ -28,7 +28,7 @@ Show all processed surveys and their analysis history.
    Analyses: 2 (15/01/2026, 22/01/2026)
    Latest: 22/01/2026
    Dashboard: ✓ Generated
-   Deployed: ✓ https://q1-engagement-2026-01-22.surge.sh
+   Deployed: ✓ https://sawalrusstagingweb.z8.web.core.windows.net/q1-engagement/
 
 📊 team-pulse-check
    Analyses: 1 (10/02/2026)

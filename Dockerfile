@@ -19,9 +19,6 @@ RUN python3 -m venv /opt/venv && \
 RUN curl -fsSL https://claude.ai/install.sh | bash
 ENV PATH="/root/.claude/bin:${PATH}"
 
-# Install surge globally
-RUN npm install -g surge@0.23.1
-
 WORKDIR /app
 
 # Copy package files and install dependencies
@@ -29,7 +26,7 @@ COPY package.json ./
 RUN npm install --production
 
 # Copy application files
-COPY processor.js download-survey.js upload-results.js send-teams-notification.js entrypoint.sh ./
+COPY processor.js upload-dashboard.js entrypoint.sh ./
 COPY templates/ ./templates/
 COPY .claude/ ./.claude/
 COPY CLAUDE.md Agents.md ./

@@ -3,134 +3,145 @@
 /**
  * processor.js — Claude Code CLI wrapper for survey processing
  *
- * Runs inside the Container App Job. Downloads survey files from SharePoint,
- * invokes Claude Code to process them, then uploads results and sends notifications.
+ * Runs inside the Container App Job. Downloads the survey file that Power Automate
+ * dropped in the `survey-inbox` blob container, invokes Claude Code to process it,
+ * uploads the generated PPTX to `survey-results`, and enqueues a `survey-done`
+ * message that Power Automate (Flow B) turns into an email. All storage access uses
+ * the container's managed identity.
  */
 
-const { execSync, spawn } = require('child_process');
+const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { DefaultAzureCredential } = require('@azure/identity');
+const { BlobServiceClient } = require('@azure/storage-blob');
+const { QueueServiceClient } = require('@azure/storage-queue');
+
+const INBOX_CONTAINER = 'survey-inbox';
+const RESULTS_CONTAINER = 'survey-results';
+const DONE_QUEUE = 'survey-done';
+const STORAGE_SUFFIX = process.env.STORAGE_SUFFIX || 'core.windows.net';
 
 async function main() {
   const {
-    SHAREPOINT_FILE_IDS,
+    INBOX_BLOB,
     SURVEY_NAME,
-    SHAREPOINT_SITE_ID,
-    SHAREPOINT_DRIVE_ID,
     FILE_NAME,
+    STORAGE_ACCOUNT,
     KEY_VAULT_URL,
     CLAUDE_MODEL,
   } = process.env;
 
-  if (!SHAREPOINT_FILE_IDS || !SURVEY_NAME) {
-    console.error('Missing required env vars: SHAREPOINT_FILE_IDS, SURVEY_NAME');
+  if (!INBOX_BLOB || !SURVEY_NAME) {
+    console.error('Missing required env vars: INBOX_BLOB, SURVEY_NAME');
+    process.exit(1);
+  }
+  if (!STORAGE_ACCOUNT) {
+    console.error('Missing required env var: STORAGE_ACCOUNT');
     process.exit(1);
   }
 
   const surveyName = SURVEY_NAME;
-  const fileIds = SHAREPOINT_FILE_IDS.split(',');
+  const fileName = FILE_NAME || path.basename(INBOX_BLOB);
 
   console.log(`[processor] Starting processing for survey: ${surveyName}`);
-  console.log(`[processor] File IDs: ${fileIds.join(', ')}`);
+  console.log(`[processor] Inbox blob: ${INBOX_CONTAINER}/${INBOX_BLOB}`);
 
-  // Load secrets from Key Vault if available
-  let secrets = {};
+  // Load the Claude auth token from Key Vault (via managed identity)
   if (KEY_VAULT_URL) {
-    secrets = await loadSecrets(KEY_VAULT_URL);
+    await loadSecrets(KEY_VAULT_URL);
   }
 
-  const logicAppUrl = secrets['logic-app-url'] || process.env.LOGIC_APP_URL;
-
-  // Send "started" notification
-  if (logicAppUrl) {
-    await sendNotification(logicAppUrl, {
-      notificationType: 'started',
-      surveyName,
-      message: `Processing started for survey: ${surveyName}`,
-    });
-  }
+  const credential = new DefaultAzureCredential({
+    managedIdentityClientId: process.env.AZURE_CLIENT_ID,
+  });
 
   try {
-    // 1. Download survey files from SharePoint
-    console.log('[processor] Downloading survey files from SharePoint...');
-    const downloadedFiles = [];
+    // 1. Download the survey file from the inbox blob container
+    console.log('[processor] Downloading survey file from blob inbox...');
+    const localPath = await downloadInbox(STORAGE_ACCOUNT, credential, INBOX_BLOB, fileName);
+    console.log(`[processor] Downloaded: ${fileName} → ${localPath}`);
 
-    for (const fileId of fileIds) {
-      const result = execSync(
-        `node download-survey.js --site-id "${SHAREPOINT_SITE_ID}" --drive-id "${SHAREPOINT_DRIVE_ID}" --file-id "${fileId.trim()}"`,
-        { encoding: 'utf-8', timeout: 120_000 }
-      );
-      const parsed = JSON.parse(result.trim());
-      downloadedFiles.push(parsed.filePath);
-      console.log(`[processor] Downloaded: ${parsed.fileName} → ${parsed.filePath}`);
-    }
-
-    // 2. Run Claude Code to process the survey
+    // 2. Run Claude Code to process the survey (generates + deploys the dashboard)
     console.log('[processor] Running Claude Code /process-survey...');
-    const filePaths = downloadedFiles.join(' ');
     const model = CLAUDE_MODEL || 'claude-sonnet-4-6';
-
-    const claudeOutput = await runClaudeCode(filePaths, model);
+    const claudeOutput = await runClaudeCode(localPath, model);
 
     // 3. Extract DEPLOYED_URL from Claude output
     const deployedUrlMatch = claudeOutput.match(/^DEPLOYED_URL=(.+)$/m);
     const dashboardUrl = deployedUrlMatch ? deployedUrlMatch[1].trim() : null;
-
     if (dashboardUrl) {
       console.log(`[processor] Dashboard deployed: ${dashboardUrl}`);
     } else {
       console.warn('[processor] Warning: Could not extract DEPLOYED_URL from output');
     }
 
-    // 4. Upload PPTX to SharePoint
-    let pptxSharePointUrl = null;
+    // 4. Upload the generated PPTX to the results container (for Flow B to attach)
     const today = new Date().toISOString().split('T')[0];
     const pptxPath = `surveys/${surveyName}/${today}/dashboard/${surveyName}.pptx`;
-
+    let pptxBlob = null;
     if (fs.existsSync(pptxPath)) {
-      console.log('[processor] Uploading PPTX to SharePoint...');
-      const uploadResult = execSync(
-        `node upload-results.js --site-id "${SHAREPOINT_SITE_ID}" --drive-id "${SHAREPOINT_DRIVE_ID}" --file "${pptxPath}" --survey-name "${surveyName}"`,
-        { encoding: 'utf-8', timeout: 120_000 }
-      );
-      const parsed = JSON.parse(uploadResult.trim());
-      pptxSharePointUrl = parsed.sharePointUrl;
-      console.log(`[processor] PPTX uploaded: ${pptxSharePointUrl}`);
+      console.log('[processor] Uploading PPTX to survey-results...');
+      pptxBlob = await uploadResult(STORAGE_ACCOUNT, credential, surveyName, pptxPath);
+      console.log(`[processor] PPTX uploaded: ${RESULTS_CONTAINER}/${pptxBlob}`);
     } else {
       console.warn(`[processor] No PPTX found at ${pptxPath}`);
     }
 
-    // 5. Send "completed" notification
-    if (logicAppUrl) {
-      await sendNotification(logicAppUrl, {
-        notificationType: 'completed',
-        surveyName,
-        dashboardUrl,
-        pptxSharePointUrl,
-        message: `Survey "${surveyName}" processed successfully`,
-      });
-    }
+    // 5. Enqueue the survey-done message (Power Automate Flow B emails the deliverable)
+    await enqueueDone(STORAGE_ACCOUNT, credential, {
+      notificationType: 'completed',
+      surveyName,
+      fileName,
+      dashboardUrl,
+      pptxContainer: pptxBlob ? RESULTS_CONTAINER : null,
+      pptxBlob,
+      message: `Survey "${surveyName}" processed successfully`,
+    });
+    console.log('[processor] Enqueued survey-done message');
 
     console.log('[processor] Done!');
   } catch (error) {
     console.error(`[processor] Fatal error: ${error.message}`);
-
-    if (logicAppUrl) {
-      await sendNotification(logicAppUrl, {
-        notificationType: 'failed',
-        surveyName,
-        error: error.message,
-        message: `Survey "${surveyName}" processing failed: ${error.message}`,
-      });
-    }
-
     process.exit(1);
   }
 }
 
-function runClaudeCode(filePaths, model) {
+async function downloadInbox(account, credential, blobName, fileName) {
+  const service = new BlobServiceClient(`https://${account}.blob.${STORAGE_SUFFIX}`, credential);
+  const blobClient = service.getContainerClient(INBOX_CONTAINER).getBlobClient(blobName);
+
+  const downloadDir = path.join(process.cwd(), 'downloads');
+  if (!fs.existsSync(downloadDir)) {
+    fs.mkdirSync(downloadDir, { recursive: true });
+  }
+  const localPath = path.join(downloadDir, fileName);
+  await blobClient.downloadToFile(localPath);
+  return localPath;
+}
+
+async function uploadResult(account, credential, surveyName, pptxPath) {
+  const service = new BlobServiceClient(`https://${account}.blob.${STORAGE_SUFFIX}`, credential);
+  const container = service.getContainerClient(RESULTS_CONTAINER);
+  const blobName = `${surveyName}/${path.basename(pptxPath)}`;
+  await container.getBlockBlobClient(blobName).uploadFile(pptxPath, {
+    blobHTTPHeaders: {
+      blobContentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    },
+  });
+  return blobName;
+}
+
+async function enqueueDone(account, credential, payload) {
+  const service = new QueueServiceClient(`https://${account}.queue.${STORAGE_SUFFIX}`, credential);
+  // Plain JSON (not base64) — the Power Automate Azure Queues trigger reads the
+  // message content directly and parses it.
+  await service.getQueueClient(DONE_QUEUE).sendMessage(JSON.stringify(payload));
+}
+
+function runClaudeCode(filePath, model) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', `/process-survey ${filePaths}`, '--model', model, '--allowedTools', '*'];
+    const args = ['-p', `/process-survey ${filePath}`, '--model', model, '--allowedTools', '*'];
     const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 3600_000, // 1 hour max
@@ -174,34 +185,13 @@ async function loadSecrets(keyVaultUrl) {
   });
   const client = new SecretClient(keyVaultUrl, credential);
 
-  const secretNames = ['logic-app-url', 'surge-token', 'surge-email', 'anthropic-oauth-token'];
-  const secrets = {};
-
-  for (const name of secretNames) {
-    try {
-      const secret = await client.getSecret(name);
-      secrets[name] = secret.value;
-    } catch (error) {
-      console.warn(`[processor] Could not load secret "${name}": ${error.message}`);
-    }
-  }
-
-  // Set env vars for downstream scripts
-  if (secrets['surge-token']) process.env.SURGE_TOKEN = secrets['surge-token'];
-  if (secrets['surge-email']) process.env.SURGE_LOGIN = secrets['surge-email'];
-  if (secrets['anthropic-oauth-token']) process.env.CLAUDE_AUTH_TOKEN = secrets['anthropic-oauth-token'];
-
-  return secrets;
-}
-
-async function sendNotification(logicAppUrl, payload) {
   try {
-    execSync(
-      `node send-teams-notification.js --url "${logicAppUrl}" --payload '${JSON.stringify(payload)}'`,
-      { encoding: 'utf-8', timeout: 30_000 }
-    );
+    const secret = await client.getSecret('anthropic-oauth-token');
+    if (secret.value) {
+      process.env.CLAUDE_AUTH_TOKEN = secret.value;
+    }
   } catch (error) {
-    console.warn(`[processor] Notification failed: ${error.message}`);
+    console.warn(`[processor] Could not load secret "anthropic-oauth-token": ${error.message}`);
   }
 }
 

@@ -6,9 +6,7 @@ on:
     paths:
       - 'Dockerfile'
       - 'processor.js'
-      - 'download-survey.js'
-      - 'upload-results.js'
-      - 'send-teams-notification.js'
+      - 'upload-dashboard.js'
       - 'entrypoint.sh'
       - 'package.json'
       - 'templates/**'

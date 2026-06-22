@@ -41,3 +41,7 @@ surveys/
 downloads/
 node_modules/
 azure-function/node_modules/
+
+# walkthrough recorder scratch (videos, narration cache) — large + machine-specific
+.walkthrough-tmp/
+*.webm

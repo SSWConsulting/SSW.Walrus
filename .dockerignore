@@ -1,0 +1,11 @@
+.git
+.github
+node_modules
+**/node_modules
+surveys
+downloads
+*.log
+.DS_Store
+.env
+infra
+docs

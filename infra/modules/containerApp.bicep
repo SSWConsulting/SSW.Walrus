@@ -23,8 +23,8 @@ param managedIdentityClientId string
 @description('Key Vault URL')
 param keyVaultUrl string
 
-@description('GitHub org for container registry')
-param githubOrg string
+@description('ACR login server, e.g. acrwalrusstaging.azurecr.io')
+param acrLoginServer string
 
 @description('Container image tag')
 param imageTag string
@@ -46,8 +46,7 @@ param costCategoryTag object
 
 var environmentName = 'ce-${project}-${environment}'
 var jobName = 'job-${project}-${environment}'
-// OCI image references must be lowercase
-var containerImage = 'ghcr.io/${toLower(githubOrg)}/walrus-processor:${imageTag}'
+var containerImage = '${acrLoginServer}/walrus-processor:${imageTag}'
 
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-11-02-preview' = {
   name: environmentName
@@ -83,18 +82,11 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
         parallelism: 1
         replicaCompletionCount: 1
       }
-      secrets: [
-        {
-          name: 'ghcr-token'
-          keyVaultUrl: '${keyVaultUrl}secrets/ghcr-token'
-          identity: managedIdentityId
-        }
-      ]
+      // Pull from ACR using the user-assigned managed identity (no secret)
       registries: [
         {
-          server: 'ghcr.io'
-          username: githubOrg
-          passwordSecretRef: 'ghcr-token'
+          server: acrLoginServer
+          identity: managedIdentityId
         }
       ]
     }

@@ -1,0 +1,58 @@
+name: Build & Deploy (Azure)
+
+# Keyless: GitHub OIDC -> Azure (federated credential on id-walrus-deploy).
+# Builds the image server-side with `az acr build` (no Docker), deploys the
+# Bicep, then publishes the Function App.
+
+on:
+  push:
+    # TODO: remove the feature branch before merging to main.
+    branches: [main, feat/power-automate-pipeline]
+  workflow_dispatch:
+
+permissions:
+  id-token: write   # required for OIDC
+  contents: read
+
+env:
+  AZURE_RESOURCE_GROUP: rg-walrus-staging
+  ACR_NAME: acrwalrusstaging
+  FUNCTION_APP: func-walrus-staging
+  IMAGE: walrus-processor
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build image in ACR (server-side)
+        run: |
+          # Idempotent: ensures the registry exists so the Bicep deploy of the
+          # Container App Job (which validates the image manifest) succeeds.
+          az acr create -n "$ACR_NAME" -g "$AZURE_RESOURCE_GROUP" --sku Basic -o none
+          az acr build -r "$ACR_NAME" -t "$IMAGE:latest" -t "$IMAGE:${GITHUB_SHA::7}" .
+
+      - name: Deploy infrastructure (Bicep)
+        run: |
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --template-file infra/main.bicep \
+            --parameters infra/staging.bicepparam \
+            --parameters imageTag=latest
+
+      - name: Install Function App dependencies
+        run: cd azure-function && npm install --production
+
+      - name: Deploy Function App
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNCTION_APP }}
+          package: azure-function

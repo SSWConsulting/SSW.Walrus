@@ -1,5 +1,5 @@
 // SSW.Walrus - Main Infrastructure Orchestration
-// Survey analysis pipeline: SharePoint -> Claude -> Azure-hosted dashboard -> Teams
+// Survey analysis pipeline: Power Automate -> queue -> Claude -> Azure-hosted dashboard -> email
 //
 // Deploy: az deployment group create -g <rg> --template-file main.bicep --parameters staging.bicepparam
 
@@ -21,9 +21,6 @@ param environment string
 
 @description('Azure region')
 param location string = 'australiaeast'
-
-@description('GitHub org for container registry')
-param githubOrg string = 'SSWConsulting'
 
 @description('Container image tag')
 param imageTag string = 'latest'
@@ -92,6 +89,18 @@ module dashboardStorage 'modules/dashboardStorage.bicep' = {
   }
 }
 
+// 4c. Container Registry (image store; runtime MI pulls via AcrPull)
+module containerRegistry 'modules/containerRegistry.bicep' = {
+  name: 'provision-acr-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    location: location
+    costCategoryTag: costCategoryTag
+    managedIdentityPrincipalId: managedIdentity.outputs.principalId
+  }
+}
+
 // 5. Monitoring (Log Analytics + App Insights)
 module monitoring 'modules/monitoring.bicep' = {
   name: 'provision-monitoring-${suffix}'
@@ -115,7 +124,7 @@ module containerApp 'modules/containerApp.bicep' = {
     managedIdentityId: managedIdentity.outputs.id
     managedIdentityClientId: managedIdentity.outputs.clientId
     keyVaultUrl: keyVault.outputs.keyVaultUrl
-    githubOrg: githubOrg
+    acrLoginServer: containerRegistry.outputs.loginServer
     imageTag: imageTag
     claudeModel: claudeModel
     storageAccountName: storage.outputs.name
@@ -157,3 +166,5 @@ output dashboardStorageAccountName string = dashboardStorage.outputs.name
 output dashboardStaticWebsiteHost string = dashboardStorage.outputs.staticWebsiteHost
 output containerAppJobName string = containerApp.outputs.jobName
 output functionAppName string = functionApp.outputs.name
+output acrLoginServer string = containerRegistry.outputs.loginServer
+output acrName string = containerRegistry.outputs.name

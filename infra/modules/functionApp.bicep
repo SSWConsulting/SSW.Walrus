@@ -99,6 +99,10 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'RESOURCE_GROUP'
           value: resourceGroup().name
         }
+        {
+          name: 'AZURE_SUBSCRIPTION_ID'
+          value: subscription().subscriptionId
+        }
       ]
     }
   }

@@ -141,7 +141,7 @@ async function enqueueDone(account, credential, payload) {
 
 function runClaudeCode(filePath, model) {
   return new Promise((resolve, reject) => {
-    const args = ['-p', `/process-survey ${filePath}`, '--model', model, '--allowedTools', '*'];
+    const args = ['-p', `/process-survey ${filePath}`, '--model', model, '--dangerously-skip-permissions'];
     const proc = spawn('claude', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 3600_000, // 1 hour max

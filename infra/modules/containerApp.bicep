@@ -20,6 +20,9 @@ param managedIdentityId string
 @description('User-assigned managed identity client ID')
 param managedIdentityClientId string
 
+@description('User-assigned managed identity principal ID (granted rights to start this job)')
+param managedIdentityPrincipalId string
+
 @description('Key Vault URL')
 param keyVaultUrl string
 
@@ -130,6 +133,19 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
     }
   }
   tags: costCategoryTag
+}
+
+// Let the managed identity start this job (the Function App calls jobs.start
+// using this same identity).
+var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
+resource jobStartRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(containerAppJob.id, managedIdentityPrincipalId, contributorRoleId)
+  scope: containerAppJob
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', contributorRoleId)
+    principalId: managedIdentityPrincipalId
+    principalType: 'ServicePrincipal'
+  }
 }
 
 output environmentId string = containerAppEnvironment.id

@@ -123,6 +123,7 @@ module containerApp 'modules/containerApp.bicep' = {
     logAnalyticsSharedKey: monitoring.outputs.logAnalyticsSharedKey
     managedIdentityId: managedIdentity.outputs.id
     managedIdentityClientId: managedIdentity.outputs.clientId
+    managedIdentityPrincipalId: managedIdentity.outputs.principalId
     keyVaultUrl: keyVault.outputs.keyVaultUrl
     acrLoginServer: containerRegistry.outputs.loginServer
     imageTag: imageTag

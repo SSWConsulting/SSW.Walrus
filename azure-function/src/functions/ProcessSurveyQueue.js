@@ -30,7 +30,6 @@ app.storageQueue('ProcessSurveyQueue', {
       context.log(`Duplicate message for ${fileName} — skipping`);
       return;
     }
-    recentMessages.set(dedupKey, now);
 
     try {
       const subscriptionId = process.env.AZURE_SUBSCRIPTION_ID || await getSubscriptionId();
@@ -47,24 +46,34 @@ app.storageQueue('ProcessSurveyQueue', {
 
       const client = new ContainerAppsAPIClient(credential, subscriptionId);
 
+      // The start override REPLACES the container spec, so carry the image,
+      // resources and static env from the job definition and append the per-run env.
+      const job = await client.jobs.get(resourceGroup, jobName);
+      const base = job.template.containers[0];
+      const env = [
+        ...(base.env || []),
+        { name: 'INBOX_BLOB', value: blobName },
+        { name: 'SURVEY_NAME', value: surveyName },
+        { name: 'FILE_NAME', value: fileName },
+      ];
+
       context.log(`Starting Container App Job: ${jobName}`);
 
-      const jobExecution = await client.jobs.beginStart(resourceGroup, jobName, {
+      await client.jobs.beginStart(resourceGroup, jobName, {
         template: {
           containers: [
             {
-              name: 'walrus-processor',
-              env: [
-                { name: 'INBOX_BLOB', value: blobName },
-                { name: 'SURVEY_NAME', value: surveyName },
-                { name: 'FILE_NAME', value: fileName },
-              ],
+              name: base.name,
+              image: base.image,
+              resources: base.resources,
+              env,
             },
           ],
         },
       });
 
-      context.log(`Container App Job started for ${surveyName}. Execution: ${JSON.stringify(jobExecution)}`);
+      recentMessages.set(dedupKey, now); // mark only after a successful start
+      context.log(`Container App Job started for ${surveyName}`);
     } catch (error) {
       context.log(`Error starting container job for ${fileName}: ${error.message}`);
       throw error;

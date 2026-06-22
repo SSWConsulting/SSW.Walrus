@@ -188,7 +188,8 @@ async function loadSecrets(keyVaultUrl) {
   try {
     const secret = await client.getSecret('anthropic-oauth-token');
     if (secret.value) {
-      process.env.CLAUDE_AUTH_TOKEN = secret.value;
+      // The Claude CLI reads CLAUDE_CODE_OAUTH_TOKEN (what `claude setup-token` emits).
+      process.env.CLAUDE_CODE_OAUTH_TOKEN = secret.value;
     }
   } catch (error) {
     console.warn(`[processor] Could not load secret "anthropic-oauth-token": ${error.message}`);

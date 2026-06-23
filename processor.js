@@ -102,16 +102,17 @@ async function main() {
       console.warn('[processor] Warning: Could not extract DEPLOYED_URL after both phases');
     }
 
+    // The slug /process-survey actually deployed under (parsed from DEPLOYED_URL)
+    // may differ from SURVEY_NAME — e.g. it's derived from the rule ("ai-cli-tools"
+    // vs the blob "freelunch-ai-cli-test"). Everything downstream (recap folder,
+    // pptx path, the survey-done message) must follow THAT slug, not the blob name.
+    const slugMatch = dashboardUrl && dashboardUrl.match(/\/([^/]+)\/?$/);
+    const deployedSlug = (slugMatch && slugMatch[1]) || surveyName;
+
     // 3b. Recap walkthrough — a SEPARATE phase (the record-walkthrough skill).
-    // Only when the dashboard is live and a TTS key is present. Best-effort: the
-    // skill records the recap, re-embeds it in the dashboard, and re-deploys to
-    // the same URL — so a failure here never affects the already-shipped dashboard.
+    // Best-effort: it records the recap, re-embeds it, and re-deploys to the same
+    // URL — a failure here never affects the already-shipped dashboard.
     if (dashboardUrl && process.env.ELEVENLABS_API_KEY) {
-      // Use the slug from the DEPLOYED_URL (the name /process-survey actually used,
-      // which may differ from SURVEY_NAME — e.g. derived from the rule), so the
-      // recap finds the right folder + re-deploys to the same prefix.
-      const slugMatch = dashboardUrl.match(/\/([^/]+)\/?$/);
-      const deployedSlug = (slugMatch && slugMatch[1]) || surveyName;
       console.log(`[processor] Recording recap walkthrough (/record-walkthrough ${deployedSlug})...`);
       try {
         await runClaude(`/record-walkthrough ${deployedSlug}`, model, PHASE2_TIMEOUT_MS);
@@ -121,22 +122,22 @@ async function main() {
       }
     }
 
-    // 4. Upload the generated PPTX to the results container (for Flow B to attach)
-    const today = new Date().toISOString().split('T')[0];
-    const pptxPath = `surveys/${surveyName}/${today}/dashboard/${surveyName}.pptx`;
+    // 4. Upload the generated PPTX to the results container (for Flow B to attach).
+    // Find it under the deployed slug, tolerant of the exact date folder + filename.
+    const pptxPath = findPptx(deployedSlug);
     let pptxBlob = null;
-    if (fs.existsSync(pptxPath)) {
+    if (pptxPath) {
       console.log('[processor] Uploading PPTX to survey-results...');
-      pptxBlob = await uploadResult(STORAGE_ACCOUNT, credential, surveyName, pptxPath);
+      pptxBlob = await uploadResult(STORAGE_ACCOUNT, credential, deployedSlug, pptxPath);
       console.log(`[processor] PPTX uploaded: ${RESULTS_CONTAINER}/${pptxBlob}`);
     } else {
-      console.warn(`[processor] No PPTX found at ${pptxPath}`);
+      console.warn(`[processor] No PPTX found under surveys/${deployedSlug}/`);
     }
 
     // 5. Enqueue the survey-done message (Power Automate Flow B emails the deliverable)
     await enqueueDone(STORAGE_ACCOUNT, credential, {
       notificationType: 'completed',
-      surveyName,
+      surveyName: deployedSlug,
       fileName,
       dashboardUrl,
       pptxContainer: pptxBlob ? RESULTS_CONTAINER : null,
@@ -150,6 +151,20 @@ async function main() {
     console.error(`[processor] Fatal error: ${error.message}`);
     process.exit(1);
   }
+}
+
+// Find the generated deck under surveys/<slug>/, tolerant of the exact date
+// folder + filename (the skill names both from whatever survey slug it chose).
+function findPptx(slug) {
+  const base = path.join('surveys', slug);
+  if (!fs.existsSync(base)) return null;
+  for (const dateDir of fs.readdirSync(base)) {
+    const dash = path.join(base, dateDir, 'dashboard');
+    if (!fs.existsSync(dash)) continue;
+    const pptx = fs.readdirSync(dash).find((f) => f.toLowerCase().endsWith('.pptx'));
+    if (pptx) return path.join(dash, pptx);
+  }
+  return null;
 }
 
 async function downloadInbox(account, credential, blobName, fileName) {

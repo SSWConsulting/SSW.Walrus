@@ -105,11 +105,6 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                  4.5 GENERATE SLIDE DECK                        │
-│  python3 templates/generate-slides.py → {name}.pptx            │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
 │                      5. DEPLOY                                   │
 │  node upload-dashboard.js --survey {name} --dir .../dashboard    │
 └─────────────────────────────────────────────────────────────────┘
@@ -302,7 +297,7 @@ surveys/{survey-name}/
 │   │   └── consolidated.json         # ← HARMONIZED - USE THIS FOR DASHBOARD
 │   └── dashboard/                    # Survey dashboard
 │       ├── index.html                # THE DELIVERABLE (HTML dashboard)
-│       └── {survey-name}.pptx        # Slide deck for presentations
+│       └── walkthrough.mp4           # Recap video (when recorded; embedded in index.html)
 ```
 
 ## Consolidation (run the assembler script)
@@ -373,41 +368,12 @@ It generates all tabs (Overview, Responses, Themes, People, Insights & Actions),
 
 **Do NOT generate the dashboard HTML yourself, and do NOT edit `index.html` after the script writes it.** If a section looks wrong, fix the data in `consolidated.json` (or the agent that produced it) and re-run the script — never patch the output. The renderer + the consolidated assembler are the contract; keep their field names in sync.
 
-## Slide Deck Generation
-
-After generating the dashboard, generate a PPTX slide deck for leadership presentations:
-
-```bash
-python3 templates/generate-slides.py \
-  surveys/{name}/{date}/analysis/consolidated.json \
-  surveys/{name}/{date}/dashboard/{name}.pptx
-```
-
-The script reads `consolidated.json` and produces a branded PowerPoint matching the depth of the HTML dashboard:
-1. Title Slide — Survey name, date, response count, "Compulsory survey"
-2. Executive Summary — Verdict grade + bullet points
-3. Key Metrics — Top-line numbers as cards
-4. Focus Area (if applicable)
-5. Top & Bottom Scores — Best/worst scoring questions with flags
-6. All Question Scores — Paginated breakdown of every question with commentary
-7. Themes & Stance — Themes with attributed quotes, the team's topic stance, key insight (paginated if many)
-8. Stance Profile — Bar chart of the stance breakdown (enthusiasm…skepticism)
-9. Notable Quotes — Attributed quotes with question context
-10. Standout Responses — Individual answers worth highlighting
-11. Cross-Survey Patterns (if multi-survey)
-12. Signals to Notice — skeptics, adoption gaps, weak content, blockers (paginated if many)
-13. Recommendations — One slide per tier (immediate/short-term/strategic) with owner, rationale, success metric
-14. Hard Truths (if any)
-
-**SSW branding:** Red `#CC4141`, charcoal `#333333`, white backgrounds, Calibri font.
-
 ## Deployment
 
 After generating the dashboard, deploy it to the Azure Blob static website:
 
 1. Run: `node upload-dashboard.js --survey {survey-name} --dir surveys/{survey-name}/{date}/dashboard`
-   - Uploads the dashboard to the `$web` container using the container's managed identity (no surge/credentials needed).
-   - The `.pptx` is skipped — it is left in the dashboard folder; `processor.js` uploads it to the `survey-results` blob and Power Automate emails it (outside this skill).
+   - Uploads the dashboard (incl. the recap `walkthrough.mp4` + poster when present) to the `$web` container using the container's managed identity (no surge/credentials needed).
    - `DASHBOARD_STORAGE_ACCOUNT` and `DASHBOARD_BASE_URL` are provided as env vars on the Container App Job. If they are absent (e.g. a local run), skip deployment and just report the local dashboard path.
 2. The script prints the public URL as a `DEPLOYED_URL=...` line. The URL form is `https://{DASHBOARD_BASE_URL}/{survey-name}/`.
 3. **CRITICAL OUTPUT FORMAT**: echo that exact line in plain text in your final message:
@@ -432,5 +398,4 @@ After generating the dashboard, deploy it to the Azure Blob static website:
 - Skip the deployment
 - Rush through the analysis — THIS IS IMPORTANT
 - Show email addresses in any output
-- Skip slide deck generation
 - Add extra text after DEPLOYED_URL (processor parses this line)

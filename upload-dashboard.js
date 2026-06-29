@@ -39,8 +39,7 @@ const CONTENT_TYPES = {
   '.woff2': 'font/woff2',
 };
 
-// Files we never publish to the public web (e.g. the leadership slide deck,
-// which processor.js uploads to the survey-results blob for emailing).
+// Defensive: never publish a stray slide deck to the public web.
 const SKIP_EXTENSIONS = new Set(['.pptx']);
 
 function walk(dir) {

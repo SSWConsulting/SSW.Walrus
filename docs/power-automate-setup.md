@@ -9,9 +9,9 @@ Mon 8am AEST ── Flow A ──▶ survey-inbox (blob) + survey-processing (qu
                                    │
                           ProcessSurveyQueue Function ──▶ Container App Job
                                    │
-              $web dashboard + survey-results (pptx blob) + survey-done (queue)
+         $web dashboard (with embedded recap video) + survey-done (queue)
                                    │
-                              Flow B ──▶ email (dashboard link + pptx)
+                              Flow B ──▶ email (dashboard link)
 ```
 
 The flows talk to Azure only through the **Storage Queue + Blob** connectors; the
@@ -87,32 +87,34 @@ App Job.
 - Queue: `survey-done`
 
 **Actions**
-1. **Parse JSON** on the message *Content* (or use `body` expressions). Schema:
+1. **Parse JSON** on the message *Content* (or use `body` expressions). The processor
+   composes the email body itself (`message` plain-text + `emailHtml` styled), so the
+   flow needs no logic. Best-effort fields can be `null`, so mark them nullable:
    ```json
    {
      "type": "object",
      "properties": {
        "surveyName":     { "type": "string" },
        "fileName":       { "type": "string" },
-       "dashboardUrl":   { "type": "string" },
-       "pptxContainer":  { "type": "string" },
-       "pptxBlob":       { "type": "string" },
-       "message":        { "type": "string" }
+       "dashboardUrl":   { "type": ["string", "null"] },
+       "topic":          { "type": ["string", "null"] },
+       "responseCount":  { "type": ["integer", "null"] },
+       "grade":          { "type": ["string", "null"] },
+       "message":        { "type": "string" },
+       "emailHtml":      { "type": "string" }
      }
    }
    ```
-2. **Azure Blob Storage → Get blob content** — using `pptxContainer` and `pptxBlob`
-   from the parsed message (e.g. `survey-results` / `<survey>/<survey>.pptx`).
-   Wrap in a **Condition** on `pptxBlob` not being null in case a run produced no deck.
+2. *(Optional)* **Condition** — `dashboardUrl` is not null. Send the email on the
+   true branch; on false (a run that didn't deploy) skip or send a short "processing
+   didn't complete" note. A successful run deletes its own queue message.
 3. **Office 365 Outlook → Send an email (V2)**
    - To: the leadership recipient / distribution list (**set this per your needs**).
-   - Subject: `Survey results: @{body('Parse_JSON')?['surveyName']}`
-   - Body: include the dashboard link → `@{body('Parse_JSON')?['dashboardUrl']}`
-   - Attachments: Name `@{body('Parse_JSON')?['surveyName']}.pptx`, Content = the
-     blob content from step 2.
-4. *(Optional)* **Azure Queues → Delete message** (the trigger handles this on
-   success, but you can be explicit) and **Azure Blob → Delete blob** to clean up
-   `survey-results` after sending.
+   - Subject: `Survey results: @{body('Parse_JSON')?['topic']}`
+   - Body: bind to **`@{body('Parse_JSON')?['emailHtml']}`** and turn **Is HTML** on
+     (branded, with the recap call-to-action + dashboard button). Or use the
+     plain-text **`message`** field if you prefer no HTML.
+   - No attachment — the recap video is embedded in the dashboard the link opens.
 
 ---
 

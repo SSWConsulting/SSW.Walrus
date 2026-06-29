@@ -11,11 +11,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python deps for the render scripts: python-pptx (slides) + openpyxl
-# (xlsx parsing). The build-consolidated/build-dashboard scripts use only
-# stdlib. World-readable venv.
+# Install openpyxl for xlsx parsing. The build-consolidated / build-dashboard
+# scripts use only stdlib. World-readable venv.
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir python-pptx openpyxl && \
+    /opt/venv/bin/pip install --no-cache-dir openpyxl && \
     ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
 
 # Run as a non-root user — `claude --dangerously-skip-permissions` refuses to run as root.

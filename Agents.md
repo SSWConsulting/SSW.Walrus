@@ -2,7 +2,7 @@
 
 ## What This System Does
 
-When a user provides a CSV/XLSX survey export, the system runs 4 specialized AI analysis agents in parallel, consolidates their outputs, generates a multi-tab HTML dashboard and PPTX slide deck, and deploys to an Azure Blob static website.
+When a user provides a CSV/XLSX survey export, the system runs 4 specialized AI analysis agents in parallel, consolidates their outputs, generates a multi-tab HTML dashboard (with an embedded narrated recap video), and deploys to an Azure Blob static website.
 
 ## Architecture at a Glance
 
@@ -20,7 +20,6 @@ Survey Export (CSV/XLSX)
   │    └─ red-flag-detector              │
   │ 3. Run consolidator                  │
   │ 4. Generate dashboard from template  │
-  │ 4.5 Generate PPTX slide deck        │
   │ 5. Deploy to Azure Blob static site │
   └──────────────────────────────────────┘
        │
@@ -44,7 +43,6 @@ SSW.FatDigester9999/
 │       └── list-surveys/SKILL.md        # Utility — list processed surveys
 ├── templates/
 │   ├── survey-dashboard.html            # SSW-branded dashboard template
-│   └── generate-slides.py              # PPTX slide deck generator
 ├── surveys/                             # .gitignored — generated output
 │   └── {survey-name}/
 │       └── {YYYY-MM-DD}/
@@ -104,7 +102,7 @@ surveys/{survey-name}/
 │   │   └── consolidated.json           # Definitive — dashboard reads this
 │   └── dashboard/
 │       ├── index.html                  # Final deliverable (HTML dashboard)
-│       └── {survey-name}.pptx          # Slide deck for presentations
+│       └── walkthrough.mp4             # Recap video (embedded in index.html)
 ```
 
 ## Best Practices

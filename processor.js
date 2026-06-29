@@ -4,10 +4,10 @@
  * processor.js — Claude Code CLI wrapper for survey processing
  *
  * Runs inside the Container App Job. Downloads the survey file that Power Automate
- * dropped in the `survey-inbox` blob container, invokes Claude Code to process it,
- * uploads the generated PPTX to `survey-results`, and enqueues a `survey-done`
- * message that Power Automate (Flow B) turns into an email. All storage access uses
- * the container's managed identity.
+ * dropped in the `survey-inbox` blob container, invokes Claude Code to process it
+ * (dashboard + embedded recap video, deployed to $web), and enqueues a `survey-done`
+ * message that Power Automate (Flow B) turns into an email with the dashboard link.
+ * All storage access uses the container's managed identity.
  */
 
 const { spawn } = require('child_process');
@@ -18,7 +18,6 @@ const { BlobServiceClient } = require('@azure/storage-blob');
 const { QueueServiceClient } = require('@azure/storage-queue');
 
 const INBOX_CONTAINER = 'survey-inbox';
-const RESULTS_CONTAINER = 'survey-results';
 const DONE_QUEUE = 'survey-done';
 const STORAGE_SUFFIX = process.env.STORAGE_SUFFIX || 'core.windows.net';
 
@@ -105,7 +104,7 @@ async function main() {
     // The slug /process-survey actually deployed under (parsed from DEPLOYED_URL)
     // may differ from SURVEY_NAME — e.g. it's derived from the rule ("ai-cli-tools"
     // vs the blob "freelunch-ai-cli-test"). Everything downstream (recap folder,
-    // pptx path, the survey-done message) must follow THAT slug, not the blob name.
+    // the survey-done message) must follow THAT slug, not the blob name.
     const slugMatch = dashboardUrl && dashboardUrl.match(/\/([^/]+)\/?$/);
     const deployedSlug = (slugMatch && slugMatch[1]) || surveyName;
 
@@ -122,27 +121,21 @@ async function main() {
       }
     }
 
-    // 4. Upload the generated PPTX to the results container (for Flow B to attach).
-    // Find it under the deployed slug, tolerant of the exact date folder + filename.
-    const pptxPath = findPptx(deployedSlug);
-    let pptxBlob = null;
-    if (pptxPath) {
-      console.log('[processor] Uploading PPTX to survey-results...');
-      pptxBlob = await uploadResult(STORAGE_ACCOUNT, credential, deployedSlug, pptxPath);
-      console.log(`[processor] PPTX uploaded: ${RESULTS_CONTAINER}/${pptxBlob}`);
-    } else {
-      console.warn(`[processor] No PPTX found under surveys/${deployedSlug}/`);
-    }
-
-    // 5. Enqueue the survey-done message (Power Automate Flow B emails the deliverable)
+    // 4. Enqueue the survey-done message (Power Automate Flow B emails the result).
+    // The processor composes the body from the digest so Flow B needs no logic —
+    // bind the email body to `emailHtml` (HTML on) or the plain-text `message`.
+    const meta = loadConsolidatedMeta(deployedSlug);
+    const { message, emailHtml } = buildEmail(deployedSlug, dashboardUrl, meta);
     await enqueueDone(STORAGE_ACCOUNT, credential, {
       notificationType: 'completed',
       surveyName: deployedSlug,
       fileName,
       dashboardUrl,
-      pptxContainer: pptxBlob ? RESULTS_CONTAINER : null,
-      pptxBlob,
-      message: `Survey "${surveyName}" processed successfully`,
+      topic: meta.topic || deployedSlug,
+      responseCount: meta.responseCount || null,
+      grade: meta.grade || null,
+      message,
+      emailHtml,
     });
     console.log('[processor] Enqueued survey-done message');
 
@@ -153,18 +146,64 @@ async function main() {
   }
 }
 
-// Find the generated deck under surveys/<slug>/, tolerant of the exact date
-// folder + filename (the skill names both from whatever survey slug it chose).
-function findPptx(slug) {
+// Pull the headline facts from the deployed digest for the result email.
+function loadConsolidatedMeta(slug) {
   const base = path.join('surveys', slug);
-  if (!fs.existsSync(base)) return null;
+  if (!fs.existsSync(base)) return {};
   for (const dateDir of fs.readdirSync(base)) {
-    const dash = path.join(base, dateDir, 'dashboard');
-    if (!fs.existsSync(dash)) continue;
-    const pptx = fs.readdirSync(dash).find((f) => f.toLowerCase().endsWith('.pptx'));
-    if (pptx) return path.join(dash, pptx);
+    const f = path.join(base, dateDir, 'analysis', 'consolidated.json');
+    if (!fs.existsSync(f)) continue;
+    try {
+      const c = JSON.parse(fs.readFileSync(f, 'utf8'));
+      const m = c.metadata || {};
+      const exec = c.executiveSummary || {};
+      const bullets = Array.isArray(exec.bullets) ? exec.bullets.slice(0, 3) : [];
+      return {
+        topic: m.topic || m.surveyName || slug,
+        responseCount: m.responseCount || null,
+        grade: c.overallGrade || null,
+        verdict: String(exec.overallVerdict || '').replace(/\s+/g, ' ').trim(),
+        video: (m.videoWatched || {}).title || null,
+        bullets,
+      };
+    } catch {
+      return {};
+    }
   }
-  return null;
+  return {};
+}
+
+// Compose the result email body (plain `message` + styled `emailHtml`) so Flow B
+// just renders one field — no flow-side logic or new dynamic content needed.
+function buildEmail(surveyName, dashboardUrl, meta) {
+  const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const topic = meta.topic || surveyName;
+  const stat = [meta.responseCount ? `${meta.responseCount} responses` : null, meta.grade ? `graded ${meta.grade}` : null].filter(Boolean).join(' · ');
+
+  const message = [
+    `This week's Chewing the Fat: ${topic}`,
+    stat ? `${stat}.` : null,
+    meta.verdict || null,
+    `View the full report (3-min recap inside):`,
+    dashboardUrl,
+    `— Powered by SSW Walrus`,
+  ].filter(Boolean).join('\n\n');
+
+  const emailHtml = `<div style="font-family:Segoe UI,Arial,sans-serif;color:#333;max-width:520px">
+  <p style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#cc4141;font-weight:700;margin:0 0 6px">SSW · Chewing the Fat</p>
+  <h2 style="margin:0 0 6px;font-size:22px;color:#333">This week's results are in</h2>
+  <p style="margin:0 0 16px;font-size:15px;color:#666">${esc(topic)}${stat ? ` &middot; ${esc(stat)}` : ''}</p>
+  ${meta.verdict ? `<p style="margin:0 0 22px;line-height:1.5;border-left:3px solid #cc4141;padding-left:12px;color:#333">${esc(meta.verdict)}</p>` : ''}
+  <div style="text-align:center;margin:24px 0">
+    <a href="${esc(dashboardUrl)}" style="background:#cc4141;color:#fff;text-decoration:none;padding:15px 34px;border-radius:8px;font-weight:700;font-size:17px;display:inline-block">📊 View the full report →</a>
+    <p style="margin:10px 0 0;font-size:12px;color:#888">Includes a 3-minute narrated recap</p>
+  </div>
+  <div style="margin-top:30px;padding-top:14px;border-top:1px solid #eee">
+    <span style="display:inline-block;width:9px;height:9px;background:#cc4141;vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;background:#333;margin-right:7px;vertical-align:middle"></span><span style="font-size:12px;color:#333;font-weight:600;vertical-align:middle">Powered by <span style="color:#cc4141">SSW Walrus</span></span>
+  </div>
+</div>`;
+
+  return { message, emailHtml };
 }
 
 async function downloadInbox(account, credential, blobName, fileName) {
@@ -178,18 +217,6 @@ async function downloadInbox(account, credential, blobName, fileName) {
   const localPath = path.join(downloadDir, fileName);
   await blobClient.downloadToFile(localPath);
   return localPath;
-}
-
-async function uploadResult(account, credential, surveyName, pptxPath) {
-  const service = new BlobServiceClient(`https://${account}.blob.${STORAGE_SUFFIX}`, credential);
-  const container = service.getContainerClient(RESULTS_CONTAINER);
-  const blobName = `${surveyName}/${path.basename(pptxPath)}`;
-  await container.getBlockBlobClient(blobName).uploadFile(pptxPath, {
-    blobHTTPHeaders: {
-      blobContentType: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    },
-  });
-  return blobName;
 }
 
 async function enqueueDone(account, credential, payload) {
@@ -214,9 +241,8 @@ function dashboardPhasePrompt(surveyName) {
     `Run these shell steps in order (use Bash). Let F be the one dated folder under surveys/${surveyName}/ — resolve it with: F=$(ls -d surveys/${surveyName}/*/ | head -1)`,
     `1. If "$F/analysis/consolidated.json" does not exist, build it: python3 templates/build-consolidated.py "$F/analysis" --survey-name "${surveyName}" --topic "${surveyName}"`,
     `2. Render the dashboard: mkdir -p "$F/dashboard" && python3 templates/build-dashboard.py "$F/analysis/consolidated.json" templates/survey-dashboard.html "$F/dashboard/index.html"`,
-    `3. Render the deck: python3 templates/generate-slides.py "$F/analysis/consolidated.json" "$F/dashboard/${surveyName}.pptx"`,
-    `4. Deploy: node upload-dashboard.js --survey ${surveyName} --dir "$F/dashboard"`,
-    `5. Output the DEPLOYED_URL=... line exactly as printed by upload-dashboard.js, alone on its own line.`,
+    `3. Deploy: node upload-dashboard.js --survey ${surveyName} --dir "$F/dashboard"`,
+    `4. Output the DEPLOYED_URL=... line exactly as printed by upload-dashboard.js, alone on its own line.`,
   ].join('\n');
 }
 

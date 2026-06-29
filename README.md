@@ -4,7 +4,7 @@ Automated survey analysis pipeline. Every Monday at 8am AEST, a Power Automate f
 sweeps a SharePoint folder for new survey CSV/XLSX files, hands them to Azure for
 processing with the Claude Code CLI, deploys HTML dashboards to an Azure Blob static
 website, and a second Power Automate flow emails the deliverable (dashboard link +
-PPTX) to leadership.
+the dashboard link) to leadership.
 
 Ingress and egress run through **Power Automate** (standard connectors, under a
 service account), so there is **no Azure AD App Registration and no admin consent** —
@@ -35,14 +35,12 @@ Monday 8am AEST
 │  1. Download survey-inbox blob     │
 │  2. Claude Code /process-survey    │
 │  3. Dashboard → Azure $web         │
-│  4. PPTX → survey-results blob     │
 │  5. queue: survey-done             │
 └───────────────┬───────────────────┘
                 ▼
 ┌───────────────────────────────────┐
 │  Power Automate — Flow B           │   survey-done queue trigger
-│  Get PPTX from blob                │
-│  Email dashboard link + PPTX       │
+│  Email the dashboard link          │
 └───────────────────────────────────┘
 ```
 

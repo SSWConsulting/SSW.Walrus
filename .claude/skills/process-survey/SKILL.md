@@ -39,9 +39,8 @@ When multiple files are provided, each file is treated as a separate survey "sec
 3. ✅ Orchestrates **4 specialized analysis agents** in parallel
 4. ✅ Runs **consolidation** to ensure consistency and deduplication
 5. ✅ Creates a **multi-tab HTML dashboard** with rich insights
-6. ✅ Generates a **PPTX slide deck** for presentations
-7. ✅ Deploys to **Azure Blob static website**
-8. ✅ Returns a **public URL**
+6. ✅ Deploys to **Azure Blob static website**
+7. ✅ Returns a **public URL**
 
 ## NEVER DO
 
@@ -49,7 +48,6 @@ When multiple files are provided, each file is treated as a separate survey "sec
 - ❌ Skip any analysis phase
 - ❌ Skip the consolidation step
 - ❌ Generate a simple single-page summary
-- ❌ Skip the slide deck generation
 - ❌ Skip the deployment
 - ❌ Include email addresses in any output
 
@@ -107,7 +105,7 @@ When multiple files are provided, each file is treated as a separate survey "sec
    │   └── consolidated.json
    └── dashboard/
        ├── index.html
-       └── {survey-name}.pptx
+       └── walkthrough.mp4   # recap video (when recorded; embedded in index.html)
    ```
 
 ### Step 2: Run Analysis Agents (IN PARALLEL)
@@ -177,26 +175,13 @@ python3 templates/build-dashboard.py \
 
 Output: `surveys/{survey-name}/{date}/dashboard/index.html`
 
-### Step 4.5: Generate Slide Deck
-
-Generate a PPTX slide deck for leadership presentations:
-
-```bash
-python3 templates/generate-slides.py \
-  surveys/{survey-name}/{date}/analysis/consolidated.json \
-  surveys/{survey-name}/{date}/dashboard/{survey-name}.pptx
-```
-
-This produces a branded PowerPoint alongside the HTML dashboard. If the script fails (e.g., missing `python-pptx`), install it with `pip3 install python-pptx` and retry.
-
 ### Step 5: Deploy to Azure Blob static website
 
 ```bash
 node upload-dashboard.js --survey {survey-name} --dir surveys/{survey-name}/{date}/dashboard
 ```
 
-- Uploads the dashboard to the `$web` container of the dashboard storage account using the container's managed identity (no credentials needed).
-- The `.pptx` is skipped — it is left in the dashboard folder; `processor.js` uploads it to the `survey-results` blob and Power Automate emails it (outside this skill).
+- Uploads the dashboard (incl. the recap `walkthrough.mp4` + poster when present) to the `$web` container of the dashboard storage account using the container's managed identity (no credentials needed).
 - Prints the public URL as a `DEPLOYED_URL=...` line. Read that line — you echo it in Step 6.
 - URL form: `https://{DASHBOARD_BASE_URL}/{survey-name}/` (e.g. `https://sawalrusstagingweb.z8.web.core.windows.net/q1-engagement/`)
 - `DASHBOARD_STORAGE_ACCOUNT` and `DASHBOARD_BASE_URL` are provided as env vars on the Container App Job. On a local run without them, skip deployment and just report the local dashboard path.
@@ -224,7 +209,6 @@ Then provide a summary:
   - Quality score: {N}/100
 
 ✓ Dashboard: surveys/{survey-name}/{date}/dashboard/index.html
-✓ Slide deck: surveys/{survey-name}/{date}/dashboard/{survey-name}.pptx
 ✓ Deployed to: https://{deploy-url}
 ```
 

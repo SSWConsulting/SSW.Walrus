@@ -16,7 +16,7 @@
   },
   "extensions": {
     "queues": {
-      "messageEncoding": "base64Encoded"
+      "messageEncoding": "base64"
     }
   },
   "extensionBundle": {

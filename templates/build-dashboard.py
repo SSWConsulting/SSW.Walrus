@@ -14,11 +14,22 @@ The card markup matches the patterns documented inline in the template
 (Alpine.js x-data cards, baked search indexes, score bars, severity badges).
 """
 
+import base64
 import html
 import json
 import os
 import re
 import sys
+
+
+def logo_data_uri(name="ssw-logo.png"):
+    """Inline the official SSW logo as a base64 data URI (self-contained HTML)."""
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", name)
+    try:
+        with open(p, "rb") as f:
+            return "data:image/png;base64," + base64.b64encode(f.read()).decode("ascii")
+    except OSError:
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +63,25 @@ def initials(name):
     if len(parts) == 1:
         return parts[0][:2].upper()
     return (parts[0][0] + parts[-1][0]).upper()
+
+
+def avatar_html(name, photo_url, px=36):
+    """Round SSW-profile-photo avatar with an initials fallback.
+
+    When photo_url is set, render an <img> tagged .js-avatar; the template's
+    onerror handler swaps it for the initials placeholder if the photo 404s
+    (non-SSW or unresolved names arrive with photo_url=None and skip the <img>
+    entirely, so we never point at the wrong person). Mirrors SSW.Tiger.
+    """
+    ini = esc(initials(name))
+    box = f'width:{px}px;height:{px}px'
+    if photo_url:
+        return (
+            f'<div class="avatar" style="{box}">'
+            f'<img class="avatar-img js-avatar" data-initials="{ini}" loading="lazy" '
+            f'src="{esc(photo_url)}" alt="{esc(name)}"></div>'
+        )
+    return f'<div class="avatar avatar-fallback" style="{box}">{ini}</div>'
 
 
 def paginated_responses(items, render_item, noun="responses"):
@@ -116,7 +146,7 @@ def render_focus_summary(focus):
         return ""
     return (
         '<section class="bg-amber-50 border-l-4 border-amber-400 rounded-r-xl p-6 mb-6">'
-        '<h2 class="text-lg text-ssw-charcoal mb-2 font-bold">🎯 Focus Area</h2>'
+        '<h2 class="text-lg text-ssw-charcoal mb-2 font-bold">Focus Area</h2>'
         f'<p class="text-ssw-charcoal">{esc(summary)}</p>'
         '</section>'
     )
@@ -142,7 +172,7 @@ def render_standouts(standouts):
         )
     return (
         '<section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">'
-        '<h2 class="text-lg text-ssw-charcoal mb-4">💡 Standout Responses</h2>'
+        '<h2 class="text-lg text-ssw-charcoal mb-4">Standout Responses</h2>'
         + "".join(cards) + '</section>'
     )
 
@@ -157,7 +187,7 @@ def render_recap_video(out_html_path, video_name="walkthrough.mp4"):
     return (
         '<section class="bg-white rounded-xl shadow-sm ssw-card p-4 mb-6">'
         '<h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">'
-        '<span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>📹 This week\'s recap</h2>'
+        '<span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>This week\'s recap</h2>'
         f'<video controls preload="none"{poster_attr} class="w-full rounded-lg" style="max-height:540px;background:#1a1a1a">'
         f'<source src="{video_name}" type="video/mp4">'
         f'Your browser can\'t play this video — <a href="{video_name}" class="text-ssw-red underline">download the recap</a>.'
@@ -172,7 +202,6 @@ def render_hard_truths(truths):
         return '<p class="text-ssw-gray-400">No hard truths surfaced — the topic landed cleanly.</p>'
     return "".join(
         '<div class="flex items-start">'
-        '<span class="mr-2">⚠️</span>'
         f'<p class="text-ssw-charcoal">{esc(t)}</p></div>'
         for t in truths
     )
@@ -454,9 +483,11 @@ def render_theme_cards(themes):
     return "".join(cards)
 
 
-def render_notable_quotes(quotes):
+def render_notable_quotes_section(quotes):
+    """Full Notable Quotes section, or "" when there are none (section omitted)."""
+    quotes = quotes or []
     if not quotes:
-        return '<p class="text-ssw-gray-400">No notable quotes.</p>'
+        return ""
     out = []
     for q in quotes:
         nm = q.get("name") or q.get("respondent") or ""
@@ -469,7 +500,11 @@ def render_notable_quotes(quotes):
             + f'<blockquote class="quote-block">&ldquo;{esc(q.get("text"))}&rdquo;</blockquote>'
             + f'<p class="quote-attribution">{attr}</p></div>'
         )
-    return "".join(out)
+    return (
+        '<section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">'
+        '<h2 class="text-lg text-ssw-charcoal mb-4">Notable Quotes</h2>'
+        '<div class="space-y-4">' + "".join(out) + '</div></section>'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -528,7 +563,7 @@ def render_people_cards(people):
             'class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">'
             '<div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">'
             '<div class="flex items-center gap-3 flex-1">'
-            f'<div class="w-9 h-9 rounded-full bg-ssw-gray-100 flex items-center justify-center text-ssw-charcoal font-bold text-sm">{esc(initials(name))}</div>'
+            f'{avatar_html(name, p.get("photoUrl"), 36)}'
             '<div class="flex-1">'
             f'<p class="font-semibold text-ssw-charcoal">{esc(name)}</p>'
             '<div class="flex items-center gap-3 mt-1 flex-wrap">'
@@ -589,9 +624,9 @@ def render_adoption_gaps(gaps):
 
 def render_recommendations(recs):
     tiers = [
-        ("immediate", "➡️ Immediate (this week)"),
-        ("shortTerm", "➡️ Short-term (this quarter)"),
-        ("strategic", "➡️ Strategic (longer)"),
+        ("immediate", "Immediate (this week)"),
+        ("shortTerm", "Short-term (this quarter)"),
+        ("strategic", "Strategic (longer)"),
     ]
     blocks = []
     for key, label in tiers:
@@ -668,14 +703,15 @@ def render_chart_scripts(consolidated):
         }}
 
         const _radarEl = document.getElementById('emotionalRadarChart');
-        if (_radarEl) {{
+        const _radarData = {json.dumps(radar_values)};
+        if (_radarEl && _radarData.some(v => v > 0)) {{
             new Chart(_radarEl, {{
                 type: 'radar',
                 data: {{
                     labels: {json.dumps(radar_labels)},
                     datasets: [{{
                         label: 'Stance %',
-                        data: {json.dumps(radar_values)},
+                        data: _radarData,
                         backgroundColor: 'rgba(204, 65, 65, 0.2)',
                         borderColor: '#CC4141',
                         pointBackgroundColor: '#CC4141'
@@ -686,6 +722,9 @@ def render_chart_scripts(consolidated):
                     scales: {{ r: {{ beginAtZero: true, suggestedMax: {max(radar_values) + 10 if radar_values else 50} }} }}
                 }}
             }});
+        }} else if (_radarEl) {{
+            const _sec = _radarEl.closest('section');
+            if (_sec) _sec.style.display = 'none';
         }}
     """
 
@@ -709,6 +748,7 @@ def main():
     exec_sum = c.get("executiveSummary") or {}
 
     replacements = {
+        "{{SSW_LOGO}}": logo_data_uri(),
         "{{SURVEY_NAME}}": esc(meta.get("surveyName") or meta.get("topic") or "Survey"),
         "{{DATE}}": esc(meta.get("dateRange") or ""),
         "{{RESPONSE_COUNT}}": esc(meta.get("responseCount") or 0),
@@ -726,7 +766,7 @@ def main():
         "{{QUESTION_BREAKDOWN}}": render_question_breakdown(c),
         "{{SENTIMENT_OVERVIEW}}": render_sentiment_overview(c.get("sentimentOverview")),
         "{{THEME_CARDS}}": render_theme_cards(c.get("themes")),
-        "{{NOTABLE_QUOTES}}": render_notable_quotes(c.get("notableQuotes")),
+        "{{NOTABLE_QUOTES_SECTION}}": render_notable_quotes_section(c.get("notableQuotes")),
         "{{PEOPLE_CARDS}}": render_people_cards(c.get("people")),
         "{{RED_FLAGS}}": render_red_flags(c.get("redFlags")),
         "{{RISK_RADAR}}": render_adoption_gaps(c.get("adoptionGaps")),

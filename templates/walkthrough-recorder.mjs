@@ -30,6 +30,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, existsSync, writeFileSync, readFileSync, renameSync, readdirSync, unlinkSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // ---------------------------------------------------------------------------
 // args
@@ -212,16 +213,44 @@ const chapterDivider = async ({ number, title, description, holdMs = 3800 }) => 
 // ---------------------------------------------------------------------------
 const FONT = "'Inter','Segoe UI',system-ui,-apple-system,sans-serif";
 
+// Official SSW logo, inlined as a data URI (mono art inverted to white for the
+// dark cards). Best-effort: no file -> no watermark, cards still render.
+const LOGO_WHITE = (() => {
+  try {
+    const p = path.join(path.dirname(fileURLToPath(import.meta.url)), 'assets', 'ssw-logo-mono.png');
+    return 'data:image/png;base64,' + readFileSync(p).toString('base64');
+  } catch { return null; }
+})();
+const logoWatermark = () => LOGO_WHITE
+  ? `<img src="${LOGO_WHITE}" alt="SSW" style="position:fixed;bottom:38px;right:44px;height:30px;width:auto;filter:brightness(0) invert(1);opacity:0.8">`
+  : '';
+
+// A round profile-photo avatar: initials sit behind, the SSW photo layers on
+// top and hides itself (onerror) if it 404s — so unresolved names degrade to
+// initials with no load-timing races. Mirrors the dashboard's People tab.
+const avatarHtml = (name, photo, size = 46) => {
+  const ini = esc(initialsOf(name));
+  const fs = Math.round(size * 0.4);
+  const box = `width:${size}px;height:${size}px;border-radius:50%;background:${ACCENT};`
+    + `display:flex;align-items:center;justify-content:center;font:700 ${fs}px ${FONT};`
+    + `color:#fff;position:relative;overflow:hidden;flex-shrink:0`;
+  const img = photo
+    ? `<img src="${esc(photo)}" onerror="this.style.display='none'" `
+      + `style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:top center">`
+    : '';
+  return `<div style="${box}">${ini}${img}</div>`;
+};
+
 // Render arbitrary inner HTML as a full-screen branded card on about:blank.
 const showCard = async (innerHtml) => {
   await page.goto('about:blank');
-  await page.evaluate(({ html, font, dark, charcoal }) => {
+  await page.evaluate(({ html, wm, font, dark, charcoal }) => {
     document.body.style.margin = '0';
     document.body.innerHTML = `<div style="position:fixed;inset:0;
       background:radial-gradient(1200px 800px at 70% -10%, #2a2a2a, ${dark} 60%, ${charcoal});
       color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;
-      font:500 16px ${font};text-align:center;padding:72px;box-sizing:border-box">${html}</div>`;
-  }, { html: innerHtml, font: FONT, dark: DARK, charcoal: CHARCOAL });
+      font:500 16px ${font};text-align:center;padding:72px;box-sizing:border-box">${html}</div>${wm}`;
+  }, { html: innerHtml, wm: logoWatermark(), font: FONT, dark: DARK, charcoal: CHARCOAL });
 };
 const titleCard = showCard; // intro/outro reuse the same renderer
 
@@ -264,7 +293,7 @@ function quoteCardHtml(ch) {
       <div style="font:600 40px/1.34 ${FONT};letter-spacing:-0.4px">${highlightQuote(ch.quote, ch.highlight)}</div>
     </div>
     <div style="margin-top:40px;display:flex;align-items:center;gap:14px">
-      <div style="width:46px;height:46px;border-radius:50%;background:${ACCENT};display:flex;align-items:center;justify-content:center;font:700 18px ${FONT}">${esc(initialsOf(ch.name))}</div>
+      ${avatarHtml(ch.name, ch.photo, 46)}
       <div style="text-align:left"><div style="font:700 22px ${FONT}">${esc(ch.name)}</div>
       ${ch.role ? `<div style="font:500 15px ${FONT};opacity:0.6">${esc(ch.role)}</div>` : ''}</div>
     </div>`;
@@ -273,8 +302,8 @@ function quoteCardHtml(ch) {
 function montageCardHtml(ch) {
   const cards = (ch.quotes || []).map((q) => `
     <div style="background:rgba(255,255,255,0.05);border-left:3px solid ${ACCENT};border-radius:0 12px 12px 0;padding:18px 22px;text-align:left">
-      <div style="font:500 21px/1.4 ${FONT};margin-bottom:10px">“${esc(q.text)}”</div>
-      <div style="font:700 15px ${FONT};opacity:0.8">— ${esc(q.name)}</div></div>`).join('');
+      <div style="font:500 21px/1.4 ${FONT};margin-bottom:12px">“${esc(q.text)}”</div>
+      <div style="display:flex;align-items:center;gap:10px">${avatarHtml(q.name, q.photo, 30)}<div style="font:700 15px ${FONT};opacity:0.85">${esc(q.name)}</div></div></div>`).join('');
   return `${eyebrow(ch.heading || 'In their words')}
     <div style="display:flex;flex-direction:column;gap:16px;width:1180px;max-height:780px;overflow:hidden">${cards}</div>`;
 }
@@ -315,7 +344,7 @@ function initialsOf(name) {
 async function graphCard(ch) {
   await page.goto('about:blank');
   await page.addScriptTag({ url: 'https://cdn.jsdelivr.net/npm/chart.js' }).catch(() => note('Chart.js failed to load — graph card will be blank'));
-  await page.evaluate(({ ch, font, dark, charcoal, accent }) => {
+  await page.evaluate(({ ch, wm, font, dark, charcoal, accent }) => {
     document.body.style.margin = '0';
     document.body.innerHTML = `<div style="position:fixed;inset:0;
       background:radial-gradient(1200px 800px at 70% -10%, #2a2a2a, ${dark} 60%, ${charcoal});
@@ -323,7 +352,7 @@ async function graphCard(ch) {
       <div style="font:700 14px/1 ${font};opacity:0.55;letter-spacing:3px;text-transform:uppercase;margin-bottom:14px">${ch.eyebrow || 'By the numbers'}</div>
       <h1 style="font:800 40px/1.1 ${font};margin:0 0 8px;letter-spacing:-0.8px">${ch.title || ''}</h1>
       <div style="font:500 18px ${font};opacity:0.7;margin-bottom:26px;max-width:900px;text-align:center">${ch.caption || ''}</div>
-      <div style="width:1000px;height:540px"><canvas id="g"></canvas></div></div>`;
+      <div style="width:1000px;height:540px"><canvas id="g"></canvas></div></div>${wm}`;
     const palette = [accent, '#E25252', '#333333', '#666666', '#A33434', '#888888', '#B0B0B0'];
     const isRadar = ch.chartType === 'radar';
     // eslint-disable-next-line no-undef
@@ -339,7 +368,7 @@ async function graphCard(ch) {
           ? { r: { angleLines: { color: '#ffffff22' }, grid: { color: '#ffffff22' }, pointLabels: { color: '#fff', font: { size: 17 } }, ticks: { display: false } } }
           : { x: { ticks: { color: '#fff', font: { size: 16 } }, grid: { color: '#ffffff14' } }, y: { ticks: { color: '#fff', font: { size: 16 } }, grid: { color: '#ffffff14' }, beginAtZero: true } } },
     });
-  }, { ch, font: FONT, dark: DARK, charcoal: CHARCOAL, accent: ACCENT });
+  }, { ch, wm: logoWatermark(), font: FONT, dark: DARK, charcoal: CHARCOAL, accent: ACCENT });
   await pause(900); // let the chart paint
 }
 

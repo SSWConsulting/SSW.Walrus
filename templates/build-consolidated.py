@@ -29,6 +29,9 @@ import re
 import sys
 from collections import OrderedDict
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ssw_people  # noqa: E402  (local module, same dir as this script)
+
 
 # ----------------------------------------------------------------------------
 # small helpers — defensive access (agents are LLMs; shapes drift)
@@ -68,6 +71,48 @@ def name_of(obj):
     if not isinstance(obj, dict):
         return ""
     return str(first(obj, "respondent", "name", "author", default="") or "").strip()
+
+
+STANCE_KEYS = ["enthusiasm", "pragmatism", "curiosity", "skepticism", "frustration", "indifference"]
+
+
+def _num(v):
+    """Coerce 38 / "38" / "38%" / 0.38 -> float; None on failure."""
+    if isinstance(v, (int, float)):
+        return float(v)
+    if isinstance(v, str):
+        m = re.search(r"-?\d+(?:\.\d+)?", v)
+        if m:
+            return float(m.group())
+    return None
+
+
+def extract_stance_breakdown(sentiment):
+    """Find the six-stance breakdown wherever the sentiment agent put it.
+
+    The agent spec is topicStance.spectrum.breakdown, but runs vary (nested under
+    stance, top-level, alternate key). Search known spots, normalise keys to the
+    six canonical stances, and return {} if nothing usable is found so the radar
+    section can hide itself rather than draw an empty hexagon.
+    """
+    stance = sentiment.get("topicStance") or {}
+    spectrum = stance.get("spectrum") or {}
+    candidates = [
+        spectrum.get("breakdown"),
+        stance.get("breakdown"),
+        stance.get("stanceProfile"),
+        sentiment.get("breakdown"),
+        sentiment.get("stanceProfile"),
+        sentiment.get("emotionalBreakdown"),
+    ]
+    for cand in candidates:
+        if not isinstance(cand, dict) or not cand:
+            continue
+        norm = {str(k).strip().lower(): v for k, v in cand.items()}
+        got = {k: (_num(norm.get(k)) or 0) for k in STANCE_KEYS}
+        if any(v for v in got.values()):
+            return got
+    return {}
 
 
 def round1(x):
@@ -551,6 +596,8 @@ def main():
     ap.add_argument("--rule-url", default=None)
     ap.add_argument("--focus", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--no-photos", action="store_true",
+                    help="skip SSW.People profile-photo resolution (offline/local runs)")
     args = ap.parse_args()
 
     d = args.analysis_dir
@@ -576,6 +623,21 @@ def main():
     standouts = build_standouts(qual)
     people = build_people(question_breakdown, free_text, survey_label)
 
+    # Resolve each respondent's name to an SSW.People profile photo (best-effort;
+    # unresolved names -> None -> renderers show initials). One central map keyed
+    # by display name; renderers (dashboard + video plan) look names up in it.
+    quote_names = (
+        [q.get("name") for t in themes for q in t.get("allQuotes", [])]
+        + [t.get("representativeQuote", {}).get("name") for t in themes]
+        + [q.get("name") for q in notable]
+        + [s.get("name") for s in standouts]
+    )
+    all_names = [p["name"] for p in people["respondents"]] + quote_names
+    photos = {} if args.no_photos else ssw_people.build_photo_map(all_names)
+    for p in people["respondents"]:
+        p["photoUrl"] = photos.get(p["name"])
+    resolved = sum(1 for v in photos.values() if v)
+
     # sentiment overview
     stance = sentiment.get("topicStance") or {}
     spectrum = stance.get("spectrum") or {}
@@ -585,7 +647,7 @@ def main():
         "spectrumLabel": first(spectrum, "label", default=""),
         "dominantStance": first(stance, "dominantStance", default=""),
         "secondaryStance": first(stance, "secondaryStance", default=""),
-        "emotionalBreakdown": spectrum.get("breakdown") or {},
+        "emotionalBreakdown": extract_stance_breakdown(sentiment),
         "candorLevel": "high",
         "quantQualDissonance": whole(first(alignment, "coolDissonance", default=0)) or 0,
         "keyInsight": first(stance, "insight", default=""),
@@ -632,6 +694,7 @@ def main():
     consolidated["standoutResponses"] = standouts
     consolidated["sentimentOverview"] = sentiment_overview
     consolidated["people"] = people
+    consolidated["photos"] = photos
     consolidated["redFlags"] = build_red_flags(rf)
     consolidated["adoptionGaps"] = build_adoption_gaps(rf)
     consolidated["recommendations"] = build_recommendations(rf, sentiment)
@@ -663,6 +726,8 @@ def main():
     print(f"  questions: {len(question_breakdown)} structured, {len(free_text)} free-text")
     print(f"  themes: {len(themes)}  people: {len(people['respondents'])}  "
           f"signals: {len(consolidated['redFlags'])}  responses: {response_count}")
+    if not args.no_photos:
+        print(f"  photos: resolved {resolved}/{len(photos)} names to SSW profile photos")
 
 
 if __name__ == "__main__":

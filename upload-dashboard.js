@@ -101,6 +101,17 @@ async function main() {
     console.error(`[upload-dashboard] uploaded ${blobName} (${contentType})`);
   }
 
+  // Publish the shared SSW logo once at the web root (/ssw-logo.png) so the
+  // result email — which can't inline data URIs (Outlook strips them) — can
+  // reference it by absolute URL. Idempotent: re-uploaded (cheaply) each run.
+  const logoSrc = path.join(__dirname, 'templates', 'assets', 'ssw-logo.png');
+  if (fs.existsSync(logoSrc)) {
+    await container.getBlockBlobClient('ssw-logo.png').uploadFile(logoSrc, {
+      blobHTTPHeaders: { blobContentType: 'image/png' },
+    });
+    console.error('[upload-dashboard] uploaded ssw-logo.png (shared web-root asset)');
+  }
+
   // Resolve the public host: prefer the Bicep-provided host, else derive it.
   const host = baseUrl || `${account}.z8.web.${process.env.STORAGE_SUFFIX || 'core.windows.net'}`;
   const url = `https://${host}/${prefix}/`;

@@ -47,6 +47,7 @@ def collect_quotes(c):
     """Pool attributed quotes from every source, sanitized, dedup by person+text."""
     pool = []
     seen = set()
+    photos = c.get("photos") or {}
 
     def add(name, text, question, kind="quote"):
         name = (name or "").strip()
@@ -57,7 +58,8 @@ def collect_quotes(c):
         if key in seen:
             return
         seen.add(key)
-        pool.append({"name": name, "text": text, "question": sanitize(question, 140), "kind": kind})
+        pool.append({"name": name, "text": text, "question": sanitize(question, 140),
+                     "kind": kind, "photo": photos.get(name)})
 
     for s in c.get("standoutResponses") or []:
         add(s.get("name") or s.get("respondent"), s.get("response") or s.get("text"), s.get("question"), "standout")
@@ -97,7 +99,8 @@ def quote_card(q, lead=None):
     # skill refines this into a proper paraphrase (don't read the whole quote
     # verbatim). The card shows the full quote with the key phrase highlighted.
     return {
-        "kind": "quote", "quote": text, "name": q["name"], "context": q.get("question") or "",
+        "kind": "quote", "quote": text, "name": q["name"], "photo": q.get("photo"),
+        "context": q.get("question") or "",
         "highlight": (g if (g and g != text and len(g) < len(text)) else None),
         "narration": f"{lead} {g}",
     }
@@ -108,7 +111,7 @@ def montage_card(heading, quotes, narr_lead):
     names = ", ".join(q["name"] for q in shown[:3]) + (", and more" if len(quotes) > 3 else "")
     return {
         "kind": "montage", "heading": heading,
-        "quotes": [{"text": sanitize(q["text"], 150), "name": q["name"]} for q in shown],
+        "quotes": [{"text": sanitize(q["text"], 150), "name": q["name"], "photo": q.get("photo")} for q in shown],
         "narration": f"{narr_lead} {names} all had something to add.",
     }
 

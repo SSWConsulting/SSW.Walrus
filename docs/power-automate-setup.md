@@ -90,18 +90,23 @@ App Job.
 1. **Parse JSON** on the message *Content* (or use `body` expressions). The processor
    composes the email body itself (`message` plain-text + `emailHtml` styled), so the
    flow needs no logic. Best-effort fields can be `null`, so mark them nullable:
+   The queue trigger hands you the message as a **string** in `MessageText` — set
+   Parse JSON's *Content* to `@{triggerBody()?['MessageText']}` (not the trigger body),
+   then use this schema (best-effort fields are nullable; `notificationType` is
+   `"completed"` on a successful run):
    ```json
    {
      "type": "object",
      "properties": {
-       "surveyName":     { "type": "string" },
-       "fileName":       { "type": "string" },
-       "dashboardUrl":   { "type": ["string", "null"] },
-       "topic":          { "type": ["string", "null"] },
-       "responseCount":  { "type": ["integer", "null"] },
-       "grade":          { "type": ["string", "null"] },
-       "message":        { "type": "string" },
-       "emailHtml":      { "type": "string" }
+       "notificationType": { "type": "string" },
+       "surveyName":       { "type": "string" },
+       "fileName":         { "type": "string" },
+       "dashboardUrl":     { "type": ["string", "null"] },
+       "topic":            { "type": ["string", "null"] },
+       "responseCount":    { "type": ["integer", "null"] },
+       "grade":            { "type": ["string", "null"] },
+       "message":          { "type": "string" },
+       "emailHtml":        { "type": "string" }
      }
    }
    ```
@@ -112,9 +117,11 @@ App Job.
    - To: the leadership recipient / distribution list (**set this per your needs**).
    - Subject: `Survey results: @{body('Parse_JSON')?['topic']}`
    - Body: bind to **`@{body('Parse_JSON')?['emailHtml']}`** and turn **Is HTML** on
-     (branded, with the recap call-to-action + dashboard button). Or use the
-     plain-text **`message`** field if you prefer no HTML.
-   - No attachment — the recap video is embedded in the dashboard the link opens.
+     (branded — SSW logo, verdict callout, recap call-to-action + dashboard button).
+     Or use the plain-text **`message`** field if you prefer no HTML.
+   - No attachment — the recap video is embedded in the dashboard the link opens, and
+     the SSW logo is referenced from the deploy's web root (`/ssw-logo.png`, published
+     by `upload-dashboard.js`), so the flow needs no image handling.
 
 ---
 

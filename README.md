@@ -2,13 +2,17 @@
 
 Automated survey analysis pipeline. Every Monday at 8am AEST, a Power Automate flow
 sweeps a SharePoint folder for new survey CSV/XLSX files, hands them to Azure for
-processing with the Claude Code CLI, deploys HTML dashboards to an Azure Blob static
-website, and a second Power Automate flow emails the deliverable (dashboard link +
-the dashboard link) to leadership.
+processing with the Claude Code CLI, deploys a branded HTML dashboard (plus a narrated
+recap video) to an Azure Blob static website, and a second Power Automate flow emails
+the deliverable (branded HTML + dashboard link) to leadership.
 
 Ingress and egress run through **Power Automate** (standard connectors, under a
 service account), so there is **no Azure AD App Registration and no admin consent** —
 see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
+
+**New here?** [`docs/how-it-works.md`](docs/how-it-works.md) walks the whole pipeline
+end to end (analysis → dashboard → recap → email), including the SSW branding and the
+SSW.People profile-photo resolution used on the People tab and in the video.
 
 ## Architecture
 
@@ -35,6 +39,7 @@ Monday 8am AEST
 │  1. Download survey-inbox blob     │
 │  2. Claude Code /process-survey    │
 │  3. Dashboard → Azure $web         │
+│  4. /record-walkthrough recap      │   (best-effort; re-embeds + re-deploys)
 │  5. queue: survey-done             │
 └───────────────┬───────────────────┘
                 ▼
@@ -76,7 +81,7 @@ After deployment, populate these in `kv-walrus-{env}`:
 | Secret | Value |
 |---|---|
 | `anthropic-oauth-token` | Claude Code OAuth token |
-| `ghcr-token` | GitHub Container Registry PAT |
+| `elevenlabs-api-key` | ElevenLabs TTS key (optional — enables the recap video) |
 
 ## Infrastructure Deployment
 
@@ -134,8 +139,9 @@ and notify steps are skipped — the dashboard is generated under
 
 ## GitHub Actions
 
-The `build-container.yml` workflow automatically builds and pushes the Docker image
-to `ghcr.io` on pushes to `main` that modify relevant files.
+The `azure-deploy.yml` workflow builds the image server-side with `az acr build`
+(keyless, via GitHub OIDC), deploys the Bicep, and publishes the Function App on
+pushes to `main`.
 
 ## Environment Variables
 

@@ -179,6 +179,10 @@ function buildEmail(surveyName, dashboardUrl, meta) {
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const topic = meta.topic || surveyName;
   const stat = [meta.responseCount ? `${meta.responseCount} responses` : null, meta.grade ? `graded ${meta.grade}` : null].filter(Boolean).join(' · ');
+  // The SSW logo is published at the web root by upload-dashboard.js; reference it
+  // by absolute URL (email clients strip data URIs). Derived from the deploy origin.
+  let logoUrl = null;
+  try { if (dashboardUrl) logoUrl = new URL(dashboardUrl).origin + '/ssw-logo.png'; } catch { /* leave null */ }
 
   const message = [
     `This week's Chewing the Fat: ${topic}`,
@@ -190,12 +194,13 @@ function buildEmail(surveyName, dashboardUrl, meta) {
   ].filter(Boolean).join('\n\n');
 
   const emailHtml = `<div style="font-family:Segoe UI,Arial,sans-serif;color:#333;max-width:520px">
-  <p style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#cc4141;font-weight:700;margin:0 0 6px">SSW · Chewing the Fat</p>
+  ${logoUrl ? `<img src="${esc(logoUrl)}" alt="SSW" width="132" style="display:block;height:auto;margin:0 0 18px" />` : ''}
+  <p style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#cc4141;font-weight:700;margin:0 0 6px">Chewing the Fat</p>
   <h2 style="margin:0 0 6px;font-size:22px;color:#333">This week's results are in</h2>
   <p style="margin:0 0 16px;font-size:15px;color:#666">${esc(topic)}${stat ? ` &middot; ${esc(stat)}` : ''}</p>
   ${meta.verdict ? `<p style="margin:0 0 22px;line-height:1.5;border-left:3px solid #cc4141;padding-left:12px;color:#333">${esc(meta.verdict)}</p>` : ''}
   <div style="text-align:center;margin:24px 0">
-    <a href="${esc(dashboardUrl)}" style="background:#cc4141;color:#fff;text-decoration:none;padding:15px 34px;border-radius:8px;font-weight:700;font-size:17px;display:inline-block">📊 View the full report →</a>
+    <a href="${esc(dashboardUrl)}" style="background:#cc4141;color:#fff;text-decoration:none;padding:15px 34px;border-radius:8px;font-weight:700;font-size:17px;display:inline-block">View the full report &rarr;</a>
     <p style="margin:10px 0 0;font-size:12px;color:#888">Includes a 3-minute narrated recap</p>
   </div>
   <div style="margin-top:30px;padding-top:14px;border-top:1px solid #eee">

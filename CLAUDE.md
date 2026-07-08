@@ -196,11 +196,7 @@ A single topic (e.g., "career development frustration") must NOT appear as:
 
 **Styling rules:**
 - In warning/alert sections (e.g. Hard Truths, Red Flags), keep body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
-- Icon usage by context:
-  - ✅ for positive items, strengths
-  - ⚠️ for warnings, risks, caution items
-  - ❌ for critical failures or red flags
-  - ➡️ for recommendations and next actions
+- **Use emoji sparingly.** Do NOT decorate tab labels or section headings with emoji — meaning is carried by the colour system (red/amber/green borders and badges), not icons. A rare inline semantic marker is fine, but default to none. The renderer (`build-dashboard.py`) and template are already emoji-free; keep them that way.
 - **All Overview sections use the same format:** `<li>` bullet points inside `<ul>`. Do NOT use `<div>` card grids or colored background cards for these — keep them as clean bullet lists.
 
 **Color allowlist (STRICT — no other background colors permitted):**
@@ -251,7 +247,7 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
 ### Tab 3: Themes
 - **Search + Expand Toolbar** — Shared with Responses tab. Filters theme cards by name, quote text, and respondent names.
 - **Topic Stance** — Banner showing the team's overall stance on the topic (spectrum score + dominant stance, e.g. "Strongly adopted — past the 'should we' stage"), from `sentimentOverview`.
-- **Stance Profile Radar Chart** — Chart.js radar chart showing enthusiasm, pragmatism, curiosity, skepticism, frustration, indifference (the keys of `sentimentOverview.emotionalBreakdown`).
+- **Stance Profile Radar Chart** — Chart.js radar chart showing enthusiasm, pragmatism, curiosity, skepticism, frustration, indifference (the keys of `sentimentOverview.emotionalBreakdown`). `build-consolidated.py` normalises the sentiment agent's breakdown to these six lowercase keys wherever it put them; if none resolve, the dashboard hides the whole Stance Profile section rather than drawing an empty radar.
 - **Theme Cards** — Interactive expandable cards in single-column layout (`space-y-4`, NOT 2-column grid). Each card uses `x-data="{ open: false }"`:
   - **Collapsed state:** Theme name, sentiment badge, frequency, representative quote with question context and attribution, chevron
   - **Expanded state** (uses `<template x-if="open">`):
@@ -260,12 +256,12 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
     - ALL quotes for the theme (not just 2-3 — the full `allQuotes` array). Each quote MUST show: the question being answered (small text above the quote), the verbatim quote, and the respondent name
   - Search filtering via baked lowercase search index
   - Cards listen to `@expand-all.window` and `@collapse-all.window` events
-- **Notable Quotes** — Curated attributed quotes, each showing the question being answered, verbatim quote, respondent name, and theme
+- **Notable Quotes** — Curated attributed quotes, each showing the question being answered, verbatim quote, respondent name, and theme. When there are no notable quotes the entire section is omitted (no empty box).
 
 ### Tab 4: People
 - **Search** — Filter by respondent name using the shared search toolbar
 - **Respondent Cards** — Interactive expandable cards (Alpine.js, same pattern as question cards):
-  - **Collapsed state:** Name (with initials avatar), average score across numeric questions, response count, notable flags (standout, highest/lowest scorer, etc.), score bar
+  - **Collapsed state:** Name (with **SSW profile photo**, falling back to an initials avatar when unresolved or the photo 404s), average score across numeric questions, response count, notable flags (standout, highest/lowest scorer, etc.), score bar
   - **Expanded state** (uses `<template x-if="open">` for DOM efficiency):
     - **Numeric Responses** — All their numeric answers with question text, score bar per question, grouped by survey section if multi-survey
     - **Text Responses** — All their free-text answers with question text, full response text, grouped by survey section if multi-survey
@@ -335,6 +331,12 @@ The `consolidator` agent's only job is a light **polish pass after the script ru
 **All quote objects** (`allQuotes`, `notableQuotes`, `standoutResponses`) MUST include a `question` field containing the question text the respondent was answering. This provides essential context for readers.
 
 **When generating the dashboard, always use these exact field names. Do NOT guess or use alternative names like `name`/`value` for free-text responses.**
+
+**Profile photos.** `build-consolidated.py` adds a top-level `photos` map (`{ "Display Name": "https://…-Profile.jpg" | null }`) and stamps `photoUrl` on each `people.respondents[]`. Names are resolved to SSW.People profile photos by `templates/ssw_people.py`; unresolved names get `null` and renderers fall back to initials. See [`docs/how-it-works.md`](docs/how-it-works.md#branding--people-photos).
+
+## Branding
+
+The official SSW logo lives in `templates/assets/` (`ssw-logo.png` colour, `ssw-logo-mono.png` for the dark video). The dashboard inlines it as base64; the recap video watermarks every card; the email references a copy `upload-dashboard.js` publishes at the web root (`/ssw-logo.png`). Do NOT reintroduce the old "squares motif" placeholder. Full mechanics: [`docs/how-it-works.md`](docs/how-it-works.md).
 
 ## Recap Walkthrough — a SEPARATE skill + pipeline phase
 

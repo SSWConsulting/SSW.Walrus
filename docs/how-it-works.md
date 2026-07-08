@@ -153,9 +153,15 @@ resolves to `null` and the dashboard/video simply show initials, exactly as befo
 
 ## Result email
 
-Composed **in code** by `buildEmail()` in `processor.js` — Flow B is a dumb renderer.
-The `survey-done` message carries a plain-text `message` and a branded `emailHtml`
-(SSW logo, verdict callout, "View the full report" button, footer). Flow B binds the
-Outlook body to `emailHtml` with **Is HTML on**. To change the email, edit `buildEmail()`
-and redeploy — no Power Automate change unless you rename a field in the Parse JSON
-schema. Use inline styles + table layout only (Outlook ignores `<style>` blocks).
+Flow B is a dumb renderer. The `survey-done` message carries a plain-text `message`
+and a branded `emailHtml`; Flow B binds the Outlook body to `emailHtml` with **Is HTML
+on**. The HTML **layout lives in `templates/email.html`** — a light, standard-SSW,
+table-based design (logo, red accent rule, charcoal heading, one meta line, an optional
+one-line verdict, one red button, thin footer; SSW palette only). `buildEmail()` in
+`processor.js` just fills the placeholders (`{{LOGO_BLOCK}}`, `{{META}}`,
+`{{VERDICT_BLOCK}}`, `{{DASHBOARD_URL}}`, …).
+
+To restyle the email, edit `templates/email.html` (keep it table-based + inline styles —
+Outlook ignores `<style>` blocks, flexbox, grid). To change what data goes in, edit
+`buildEmail()`. Either way, redeploy — no Power Automate change unless you rename a field
+in the Parse JSON schema.

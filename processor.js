@@ -175,38 +175,46 @@ function loadConsolidatedMeta(slug) {
 
 // Compose the result email body (plain `message` + styled `emailHtml`) so Flow B
 // just renders one field — no flow-side logic or new dynamic content needed.
+// The HTML layout lives in templates/email.html (standard SSW format); we only
+// fill placeholders here so the design is editable without touching code.
 function buildEmail(surveyName, dashboardUrl, meta) {
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
   const topic = meta.topic || surveyName;
-  const stat = [meta.responseCount ? `${meta.responseCount} responses` : null, meta.grade ? `graded ${meta.grade}` : null].filter(Boolean).join(' · ');
+  // Meta line: response count only. (No A-F grade — that lives on the dashboard's verdict.)
+  const metaLine = meta.responseCount ? `${meta.responseCount} responses` : '';
   // The SSW logo is published at the web root by upload-dashboard.js; reference it
   // by absolute URL (email clients strip data URIs). Derived from the deploy origin.
   let logoUrl = null;
   try { if (dashboardUrl) logoUrl = new URL(dashboardUrl).origin + '/ssw-logo.png'; } catch { /* leave null */ }
 
   const message = [
-    `This week's Chewing the Fat: ${topic}`,
-    stat ? `${stat}.` : null,
+    `${topic} — Digesting the Fat`,
+    metaLine ? `${metaLine}.` : null,
     meta.verdict || null,
     `View the full report (3-min recap inside):`,
     dashboardUrl,
-    `— Powered by SSW Walrus`,
+    `— SSW · Chewing the Fat`,
   ].filter(Boolean).join('\n\n');
 
-  const emailHtml = `<div style="font-family:Segoe UI,Arial,sans-serif;color:#333;max-width:520px">
-  ${logoUrl ? `<img src="${esc(logoUrl)}" alt="SSW" width="132" style="display:block;height:auto;margin:0 0 18px" />` : ''}
-  <p style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#cc4141;font-weight:700;margin:0 0 6px">Chewing the Fat</p>
-  <h2 style="margin:0 0 6px;font-size:22px;color:#333">This week's results are in</h2>
-  <p style="margin:0 0 16px;font-size:15px;color:#666">${esc(topic)}${stat ? ` &middot; ${esc(stat)}` : ''}</p>
-  ${meta.verdict ? `<p style="margin:0 0 22px;line-height:1.5;border-left:3px solid #cc4141;padding-left:12px;color:#333">${esc(meta.verdict)}</p>` : ''}
-  <div style="text-align:center;margin:24px 0">
-    <a href="${esc(dashboardUrl)}" style="background:#cc4141;color:#fff;text-decoration:none;padding:15px 34px;border-radius:8px;font-weight:700;font-size:17px;display:inline-block">View the full report &rarr;</a>
-    <p style="margin:10px 0 0;font-size:12px;color:#888">Includes a 3-minute narrated recap</p>
-  </div>
-  <div style="margin-top:30px;padding-top:14px;border-top:1px solid #eee">
-    <span style="display:inline-block;width:9px;height:9px;background:#cc4141;vertical-align:middle"></span><span style="display:inline-block;width:9px;height:9px;background:#333;margin-right:7px;vertical-align:middle"></span><span style="font-size:12px;color:#333;font-weight:600;vertical-align:middle">Powered by <span style="color:#cc4141">SSW Walrus</span></span>
-  </div>
-</div>`;
+  const logoBlock = logoUrl
+    ? `<img src="${esc(logoUrl)}" alt="SSW" width="120" style="display:block;height:auto;border:0;outline:none;text-decoration:none" />`
+    : `<span style="font-size:20px;font-weight:800;color:#333333;letter-spacing:1px">SSW</span>`;
+  const verdictBlock = meta.verdict
+    ? `<tr><td style="padding:0 0 20px;font-size:15px;line-height:1.5;color:#333333">${esc(meta.verdict)}</td></tr>`
+    : '';
+
+  // Strip the leading doc comment FIRST — it lists the same {{PLACEHOLDER}} names,
+  // and a naive first-match .replace() would fill those instead of the real ones.
+  const tpl = fs.readFileSync(path.join(__dirname, 'templates', 'email.html'), 'utf8')
+    .replace(/^\s*<!--[\s\S]*?-->\s*/, '');
+  const emailHtml = tpl
+    .replace('{{LOGO_BLOCK}}', logoBlock)
+    .replace('{{TOPIC}}', esc(topic))
+    .replace('{{META}}', esc(metaLine))
+    .replace('{{VERDICT_BLOCK}}', verdictBlock)
+    .replace(/\{\{DASHBOARD_URL\}\}/g, esc(dashboardUrl || '#'))
+    .replace('{{BUTTON_LABEL}}', 'View the full report')
+    .replace('{{FOOTER}}', 'SSW &middot; Chewing the Fat — the weekly tech-topic poll');
 
   return { message, emailHtml };
 }

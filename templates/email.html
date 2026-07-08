@@ -1,0 +1,35 @@
+<!--
+  SSW "Chewing the Fat" result email — standard SSW format, clean and light.
+  Filled by processor.js buildEmail() and bound to Flow B's Outlook body (Is HTML on).
+
+  Rules for editing:
+  - Table-based layout + inline styles ONLY (Outlook ignores <style> blocks, flexbox, grid).
+  - SSW palette only: Red #CC4141, Charcoal #333333, greys #797979 / #AAAAAA / #EEEEEE.
+  - Keep it light on text — logo, the topic (H1), the "Digesting the Fat" subtitle,
+    one meta line, an optional one-line verdict, a button, and the plain link as a
+    fallback. Don't reintroduce eyebrows, callout borders, or the squares motif.
+  - Placeholders (filled in code): {{LOGO_BLOCK}} {{TOPIC}} {{META}} {{VERDICT_BLOCK}}
+    {{DASHBOARD_URL}} {{BUTTON_LABEL}} {{FOOTER}}
+-->
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;margin:0;padding:0">
+  <tr>
+    <td align="center" style="padding:32px 16px">
+      <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;max-width:560px;font-family:'Segoe UI',Arial,Helvetica,sans-serif;color:#333333">
+        <tr><td style="padding:0 0 18px">{{LOGO_BLOCK}}</td></tr>
+        <tr><td style="border-top:3px solid #CC4141;font-size:0;line-height:0;height:0">&nbsp;</td></tr>
+        <tr><td style="padding:22px 0 2px;font-size:24px;font-weight:700;line-height:1.25;color:#333333">{{TOPIC}}</td></tr>
+        <tr><td style="padding:0 0 2px;font-size:15px;font-weight:600;color:#CC4141">Digesting the Fat</td></tr>
+        <tr><td style="padding:0 0 18px;font-size:14px;color:#797979">{{META}}</td></tr>
+        {{VERDICT_BLOCK}}
+        <tr><td style="padding:4px 0 14px">
+          <a href="{{DASHBOARD_URL}}" style="background:#CC4141;color:#ffffff;text-decoration:none;padding:13px 30px;border-radius:6px;font-weight:700;font-size:15px;display:inline-block">{{BUTTON_LABEL}}</a>
+        </td></tr>
+        <tr><td style="padding:0 0 26px;font-size:12px;line-height:1.5;color:#797979;word-break:break-all">
+          Or paste this link into your browser:<br />
+          <a href="{{DASHBOARD_URL}}" style="color:#CC4141;text-decoration:underline">{{DASHBOARD_URL}}</a>
+        </td></tr>
+        <tr><td style="border-top:1px solid #EEEEEE;padding:16px 0 0;font-size:12px;color:#AAAAAA">{{FOOTER}}</td></tr>
+      </table>
+    </td>
+  </tr>
+</table>

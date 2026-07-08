@@ -6,8 +6,7 @@ name: Build & Deploy (Azure)
 
 on:
   push:
-    # TODO: remove the feature branch before merging to main.
-    branches: [main, feat/power-automate-pipeline]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

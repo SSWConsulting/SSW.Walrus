@@ -26,8 +26,10 @@ This is NOT an employee-engagement survey. Do not produce health scores, grades,
 1. **Classify every column** into one of the types above.
 2. For each **content rating (1-5)**: mean (1 decimal), distribution (count at each point), skip rate, individual responses, and a 1-2 sentence commentary on the topic reception (NOT morale).
 3. For each **single/multi-select and categorical** question: tally each option (label + count + percent), note the clear winner / long tail, and list individual responses. For multi-select, split on `;` and strip `N.` prefixes before tallying.
-4. **Topic reception summary**: how did the team receive this week's topic overall (from the content ratings + task-value rating) — decisively. Remember a 7/10 is mediocre; real enthusiasm is 8+.
+4. **Topic reception summary**: how did the team receive this week's topic overall — decisively. Remember a 7/10 is mediocre; real enthusiasm is 8+.
 5. **Adoption headline**: the single most useful structured finding (e.g. "Claude Code is the runaway daily-driver favourite — 60% of those with a pick").
+
+**De-emphasise the video & rule ratings.** Still compute them, but the insight almost never lives in those two near-identical 4.x/5 content scores — they're not the story. Lead your reception summary and adoption headline with the **choice/multi-select signal and the task-value rating**, and treat the video/rule means as minor supporting detail (a low one is worth flagging; a high one is not a headline). The dashboard's headline metrics deliberately exclude video/rule for the same reason.
 
 Use whole numbers for stats in prose.
 

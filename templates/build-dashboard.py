@@ -346,18 +346,35 @@ def render_choice_card(q):
 
 
 def render_freetext_card(q):
+    """Free-text card: lead with the AI-curated insightful/opinionated picks;
+    keep every raw response behind a 'Show all' toggle."""
     text = q.get("text", "")
     responses = q.get("responses") or q.get("individualResponses") or []
+    curated = q.get("curated") or []
     rc = q.get("responseCount", len(responses))
     idx = sidx(text, "free text", *[r.get("respondent", "") for r in responses[:10]])
 
-    body = (
-        '<template x-if="open"><div class="question-card-body p-4">'
-        '<div class="response-list">'
-        + paginated_responses(responses, _text_response_item)
-        + '</div></div></template>'
-    )
+    if curated:
+        curated_html = (
+            '<p class="text-xs font-semibold uppercase tracking-wide text-ssw-gray-500 mb-2">'
+            'Most insightful responses</p>'
+            '<div class="response-list">' + "".join(_text_response_item(r) for r in curated) + '</div>'
+        )
+        show_all = (
+            f'<button class="show-more-btn" @click="showAll = !showAll" '
+            f'x-text="showAll ? \'Hide all responses\' : \'Show all {len(responses)} responses\'"></button>'
+            '<div x-show="showAll" x-cloak class="response-list mt-2">'
+            + "".join(_text_response_item(r) for r in responses) + '</div>'
+        )
+        inner = curated_html + show_all
+    else:
+        # nothing substantive to curate — just show them all
+        inner = '<div class="response-list">' + paginated_responses(responses, _text_response_item) + '</div>'
 
+    body = '<template x-if="open"><div class="question-card-body p-4">' + inner + '</div></template>'
+
+    badge = (f'<span class="text-xs text-ssw-gray-500">{len(curated)} picks · {esc(rc)} responses</span>'
+             if curated else f'<span class="text-xs text-ssw-gray-500">{esc(rc)} responses</span>')
     return (
         f'<div x-data="{{ open: false, showAll: false }}" '
         '@expand-all.window="open = true" @collapse-all.window="open = false" '
@@ -368,7 +385,7 @@ def render_freetext_card(q):
         f'<p class="font-semibold text-ssw-charcoal text-sm">Q: {esc(text)}</p>'
         '<div class="flex items-center gap-3 mt-2">'
         '<span class="flag-badge">Free Text</span>'
-        f'<span class="text-xs text-ssw-gray-500">{esc(rc)} responses</span>'
+        f'{badge}'
         '</div></div>'
         '<span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && \'open\'">▼</span>'
         '</div>' + body + '</div>'
@@ -766,7 +783,6 @@ def main():
         "{{QUESTION_BREAKDOWN}}": render_question_breakdown(c),
         "{{SENTIMENT_OVERVIEW}}": render_sentiment_overview(c.get("sentimentOverview")),
         "{{THEME_CARDS}}": render_theme_cards(c.get("themes")),
-        "{{NOTABLE_QUOTES_SECTION}}": render_notable_quotes_section(c.get("notableQuotes")),
         "{{PEOPLE_CARDS}}": render_people_cards(c.get("people")),
         "{{RED_FLAGS}}": render_red_flags(c.get("redFlags")),
         "{{RISK_RADAR}}": render_adoption_gaps(c.get("adoptionGaps")),

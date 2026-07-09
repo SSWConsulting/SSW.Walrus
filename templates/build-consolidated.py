@@ -200,8 +200,69 @@ def build_question_breakdown(quant):
 # freeTextQuestions
 # ----------------------------------------------------------------------------
 
+_LOW_SIGNAL = {"n/a", "na", "none", "no", "nil", "nothing", "-", "—", "nope", "n/a not a dev"}
+
+
+def _surfaced_quote_keys(qual):
+    """Prefixes of every response the qualitative agent already surfaced as
+    notable (standouts, notable quotes, theme quotes) — our 'AI-picked' signal."""
+    keys = set()
+
+    def add(t):
+        t = re.sub(r"\s+", " ", str(t or "").strip().lower())
+        if len(t) >= 12:
+            keys.add(t[:60])
+    for s in as_list(qual.get("standoutResponses")):
+        add(first(s, "response", "text"))
+    for q in as_list(qual.get("notableQuotes")):
+        add(q.get("text"))
+    for t in as_list(qual.get("themes")):
+        for q in as_list(t.get("allQuotes")):
+            add(q.get("text"))
+        rq = t.get("representativeQuote")
+        if isinstance(rq, dict):
+            add(rq.get("text"))
+    return keys
+
+
+def _substance(txt):
+    """Cheap opinion/insight score — length + opinion markers; 0 for filler."""
+    t = txt.strip().lower()
+    if t in _LOW_SIGNAL or len(t) < 12:
+        return 0
+    wc = len(re.findall(r"\w+", t))
+    markers = ("but ", "however", "because", "should", "need", "wish", "annoying",
+               "great", "love", "hate", "prefer", "issue", "bug", "problem",
+               "better", "worse", "!", "painful", "awesome", "confusing")
+    op = sum(t.count(m) for m in markers)
+    return wc + op * 4
+
+
+def _curate(responses, surfaced, want=6, cap=8):
+    """Pick the most insightful/opinionated responses: agent-surfaced first, then
+    by substance score. Returns a curated subset (the raw list stays available)."""
+    curated, seen = [], set()
+
+    def take(r):
+        k = (r["respondent"], r["text"][:40])
+        if k not in seen and _substance(r["text"]) > 0:
+            seen.add(k)
+            curated.append(r)
+    for r in responses:  # agent-surfaced picks first
+        key = re.sub(r"\s+", " ", r["text"].strip().lower())[:60]
+        if key in surfaced:
+            take(r)
+    if len(curated) < want:  # top up by substance
+        for r in sorted(responses, key=lambda r: _substance(r["text"]), reverse=True):
+            take(r)
+            if len(curated) >= want:
+                break
+    return curated[:cap]
+
+
 def build_free_text(qual):
     out = []
+    surfaced = _surfaced_quote_keys(qual)
     questions = first(qual, "questions", "freeTextQuestions", default=[])
     for q in as_list(questions):
         if not isinstance(q, dict):
@@ -214,12 +275,15 @@ def build_free_text(qual):
             if not txt:
                 continue
             responses.append({"respondent": nm or "—", "text": txt})
+        curated = _curate(responses, surfaced)
         out.append({
             "id": first(q, "id", default=f"qt{len(out)+1}"),
             "text": first(q, "text", "question", default=""),
             "responseCount": q.get("responseCount") or len(responses),
             "participationRate": whole(q.get("participationRate")) or 0,
-            # dashboard binds to `responses`; keep `individualResponses` as a mirror
+            # `curated` = the insightful/opinionated picks the dashboard leads with;
+            # `responses` = every raw response (behind a "Show all" toggle).
+            "curated": curated,
             "responses": responses,
             "individualResponses": responses,
         })
@@ -554,32 +618,52 @@ def build_overview(quant, qual, sentiment, rf, question_breakdown):
 
 
 def build_key_metrics(quant, question_breakdown, rf):
+    """Headline metric cards. Deliberately led by the OPINION + ADOPTION signal —
+    the video/rule content ratings are NOT featured here (they rarely carry the
+    insight and would just be two near-identical 4.x/5 numbers). Those still live
+    in the Responses tab. Cards: top pick, adoption frontier, task value, + one
+    more opinion signal (else response count)."""
     metrics = []
     reception = quant.get("topicReception") or {}
-    rule_rating = round1(reception.get("ruleRating"))
-    if rule_rating is not None:
-        metrics.append({"label": "Rule rating", "value": f"{rule_rating}/5",
-                        "status": "good" if rule_rating >= 4 else "watch"})
-    # favourite from a single-select, top from any choice question
-    fav = None
+
+    # 1. Top pick from the first choice question (what the team actually chose)
+    first_choice_text = None
     for q in question_breakdown:
         if q.get("kind") in ("single-select", "multi-select") and q.get("distribution"):
             top = max(q["distribution"].items(), key=lambda kv: kv[1])
-            fav = top[0]
-            metrics.append({"label": "Top pick", "value": fav, "status": "good",
-                            "context": q.get("text", "")[:60]})
+            first_choice_text = q.get("text", "")[:60]
+            metrics.append({"label": "Top pick", "value": top[0], "status": "good",
+                            "context": first_choice_text})
             break
-    # first adoption gap as a "watch" metric
+
+    # 2. Adoption frontier — where uptake is thin (first gap %)
     gaps = as_list(rf.get("adoptionGaps"))
     if gaps and isinstance(gaps[0], dict):
         ev = gaps[0].get("evidence", "")
         m = re.search(r"(\d+\s*%)", ev)
         metrics.append({"label": "Adoption frontier", "value": m.group(1) if m else "See gaps",
                         "status": "watch", "context": gaps[0].get("gap", "")[:60]})
+
+    # 3. Task value — the one content rating that reflects the exercise's worth
     task_value = round1(reception.get("taskValueRating"))
-    if task_value is not None and len(metrics) < 4:
+    if task_value is not None:
         metrics.append({"label": "Task value", "value": f"{task_value}/5",
                         "status": "good" if task_value >= 4 else "watch"})
+
+    # 4. A second opinion signal from another choice question, else response count
+    if len(metrics) < 4:
+        for q in question_breakdown:
+            if (q.get("kind") in ("single-select", "multi-select") and q.get("distribution")
+                    and q.get("text", "")[:60] != first_choice_text):
+                top = max(q["distribution"].items(), key=lambda kv: kv[1])
+                metrics.append({"label": "Also notable", "value": top[0], "status": "good",
+                                "context": q.get("text", "")[:60]})
+                break
+    if len(metrics) < 4:
+        rc = whole(first(quant.get("metadata") or {}, "totalResponses", "responseCount", default=None))
+        if rc:
+            metrics.append({"label": "Responses", "value": str(rc), "status": "good",
+                            "context": "100% of the team"})
     return metrics[:4]
 
 

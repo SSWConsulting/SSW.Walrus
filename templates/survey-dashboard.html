@@ -7,60 +7,53 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- SSW Brand: Inter font for web -->
+    <!-- SSW Design System fonts: Inter (sans) + IBM Plex Mono (data) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script>
-        // SSW Brand Colors Configuration
+        // Tailwind config aligned to the SSW Design System tokens
+        // (values from @sswconsulting/design-system). ssw-* scales kept for the
+        // generated content, brand reds nudged to the DS primary #CD4242.
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        // SSW Primary Red: #CC4141
+                        // DS semantic tokens
+                        primary: { DEFAULT: '#CD4242', foreground: '#FFFFFF' },
+                        secondary: { DEFAULT: '#333333', foreground: '#FFFFFF' },
+                        success: '#067957',
+                        warning: '#8F6C19',
+                        destructive: '#DC2828',
+                        info: '#4E19A9',
+                        // SSW Primary Red (DS primary #CD4242)
                         'ssw-red': {
-                            DEFAULT: '#CC4141',
-                            50: '#FCE9E9',
-                            100: '#F8D4D4',
-                            200: '#F1A9A9',
-                            300: '#E97D7D',
-                            400: '#E25252',
-                            500: '#CC4141',
-                            600: '#A33434',
-                            700: '#7A2727',
-                            800: '#521A1A',
-                            900: '#290D0D'
+                            DEFAULT: '#CD4242',
+                            50: '#FCE9E9', 100: '#F8D4D4', 200: '#F1A9A9', 300: '#E97D7D',
+                            400: '#E25252', 500: '#CD4242', 600: '#A33636', 700: '#7A2828',
+                            800: '#521B1B', 900: '#290D0D'
                         },
-                        // SSW Charcoal: #333333
+                        // SSW Charcoal (DS secondary #333333)
                         'ssw-charcoal': {
                             DEFAULT: '#333333',
-                            50: '#F5F5F5',
-                            100: '#E8E8E8',
-                            200: '#D1D1D1',
-                            300: '#B0B0B0',
-                            400: '#888888',
-                            500: '#666666',
-                            600: '#4D4D4D',
-                            700: '#333333',
-                            800: '#1A1A1A',
-                            900: '#0D0D0D'
+                            50: '#F5F5F5', 100: '#E8E8E8', 200: '#D1D1D1', 300: '#B0B0B0',
+                            400: '#888888', 500: '#666666', 600: '#4D4D4D', 700: '#333333',
+                            800: '#1A1A1A', 900: '#0D0D0D'
                         },
-                        // SSW Gray palette
                         'ssw-gray': {
-                            50: '#FAFAFA',
-                            100: '#F4F4F5',
-                            200: '#E4E4E7',
-                            300: '#D4D4D8',
-                            400: '#A1A1AA',
-                            500: '#71717A',
-                            600: '#52525B',
-                            700: '#3F3F46',
-                            800: '#27272A',
-                            900: '#18181B'
+                            50: '#FAFAFA', 100: '#F4F4F5', 200: '#E4E4E7', 300: '#D4D4D8',
+                            400: '#A1A1AA', 500: '#71717A', 600: '#52525B', 700: '#3F3F46',
+                            800: '#27272A', 900: '#18181B'
                         }
                     },
                     fontFamily: {
-                        'sans': ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+                        'sans': ['Inter', 'Helvetica Neue', 'Helvetica', 'sans-serif'],
+                        'mono': ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
+                    },
+                    borderRadius: { 'ds': '8px', 'ds-sm': '4px' },
+                    boxShadow: {
+                        'ds-raised': '0px 2px 4px 0px #00000014, 0px 4px 8px 0px #0000000a',
+                        'ds-overlay': '0px 8px 8px 0px #0000000a, 0px 20px 24px 0px #00000014',
                     }
                 }
             }
@@ -69,34 +62,113 @@
     <style>
         [x-cloak] { display: none !important; }
 
-        /* SSW Brand Typography */
-        html {
-            font-size: 18px;
-        }
-        body {
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
-            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+        /* ============================================================
+           SSW Design System tokens (from @sswconsulting/design-system)
+           ============================================================ */
+        :root {
+            --primary: #cd4242;
+            --primary-foreground: #ffffff;
+            --secondary: #333333;
+            --success: #067957;
+            --warning: #8f6c19;
+            --destructive: #dc2828;
+            --border: #0000001a;
+            --card: #ffffff;
+            --foreground: #000000e6;
+            --muted-foreground: #0009;
+            --background-base: #ffffff;
+            --background-sunken: #fafafa;
+            --text-strong: #000000e6;
+            --text-weak: #0009;
+            --text-brand: #b3352f;
+            --text-error: #c92a2a;
+            --text-warning: #8f6c19;
+            --text-success: #067957;
+            --stroke-strong: #00000073;
+            --stroke-weak: #0000001a;
+            --fill-weak: #0000000a;
+            --fill-weaker: #00000005;
+            --shadow-raised: 0px 2px 4px 0px #00000014, 0px 4px 8px 0px #0000000a;
+            --shadow-overlay: 0px 8px 8px 0px #0000000a, 0px 20px 24px 0px #00000014;
+            --radius-sm: 4px;
+            --radius-lg: 8px;
         }
 
-        /* Strong heading differentiation per SSW rules */
-        h1 { font-weight: 800; letter-spacing: -0.025em; }
+        /* SSW Brand Typography (DS base 16px) */
+        html { font-size: 16px; }
+        body {
+            font-family: 'Inter', 'Helvetica Neue', 'Helvetica', sans-serif;
+            font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+            color: var(--foreground);
+            background: var(--background-sunken);
+        }
+        h1 { font-weight: 700; letter-spacing: -0.02em; }
         h2 { font-weight: 700; letter-spacing: -0.02em; }
         h3 { font-weight: 600; }
 
         @media print {
-            .no-print { display: none; }
+            .no-print { display: none !important; }
             .print-break { page-break-before: always; }
+            .ds-sidebar { display: none !important; }
+            .ds-shell { grid-template-columns: 1fr !important; }
+            body { background: #fff; }
         }
 
-        /* SSW-style card hover effect */
+        /* ============================================================
+           DS COMPONENTS — card / badge / callout / stat
+           Redefines the legacy .ssw-card so all generated cards get DS chrome.
+           ============================================================ */
+        .ds-card,
         .ssw-card {
-            transition: all 0.2s ease;
-            border: 1px solid #E4E4E7;
+            background: var(--card);
+            border: 1px solid var(--border) !important;
+            border-radius: var(--radius-lg) !important;
+            box-shadow: var(--shadow-raised);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
         }
+        .ds-card:hover,
         .ssw-card:hover {
-            border-color: #CC4141;
-            box-shadow: 0 4px 12px rgba(204, 65, 65, 0.1);
+            border-color: var(--primary) !important;
+            box-shadow: 0 4px 12px rgba(205, 66, 66, 0.10);
         }
+        .ds-badge {
+            display: inline-flex; align-items: center; gap: 0.25rem;
+            border-radius: 9999px; font-weight: 600; font-size: 0.75rem;
+            line-height: 1; padding: 0.3125rem 0.625rem; border: 1px solid transparent; white-space: nowrap;
+        }
+        .ds-stat { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-raised); padding: 1rem 1.25rem; }
+        .ds-stat__label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; color: var(--muted-foreground); }
+        .ds-stat__value { font-size: 1.75rem; font-weight: 800; color: var(--text-strong); margin-top: 0.25rem; line-height: 1.1; }
+        .ds-stat__meta { font-size: 0.75rem; color: var(--muted-foreground); margin-top: 0.25rem; font-weight: 500; }
+
+        /* ============================================================
+           DS SHELL — sidebar nav + top bar + main column
+           ============================================================ */
+        .ds-shell { display: grid; grid-template-columns: 1fr; min-height: 100vh; }
+        @media (min-width: 1024px) { .ds-shell { grid-template-columns: 248px 1fr; } }
+        .ds-sidebar {
+            display: none; flex-direction: column; gap: 0.25rem;
+            background: var(--background-base); border-right: 1px solid var(--border);
+            padding: 1.5rem 0.875rem; position: sticky; top: 0; height: 100vh;
+        }
+        @media (min-width: 1024px) { .ds-sidebar { display: flex; } }
+        .ds-navitem {
+            display: flex; align-items: center; gap: 0.75rem; width: 100%;
+            padding: 0.55rem 0.8rem; border-radius: var(--radius-sm); font-size: 0.9rem;
+            font-weight: 500; color: var(--muted-foreground); background: transparent;
+            border: 0; cursor: pointer; text-align: left; transition: background 0.15s, color 0.15s;
+        }
+        .ds-navitem:hover { background: var(--fill-weak); color: var(--foreground); }
+        .ds-navitem--active { background: rgba(205,66,66,0.08); color: var(--primary); font-weight: 600; }
+        .ds-navitem svg { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+        .ds-topbar {
+            display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+            padding: 1rem 1.75rem; background: var(--background-base);
+            border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 20;
+        }
+        .ds-topbar-tabs { display: flex; gap: 0.25rem; }
+        @media (min-width: 1024px) { .ds-topbar-tabs { display: none; } }  /* mobile-only tab row */
+        .ds-main { padding: 1.75rem; max-width: 1120px; margin: 0 auto; width: 100%; }
 
         /* Tab active state with SSW red */
         .tab-active {
@@ -406,80 +478,85 @@
         }
     </style>
 </head>
-<body class="bg-ssw-gray-50 min-h-screen">
-    <div x-data="{ activeTab: 'overview', searchQuery: '' }" class="max-w-6xl mx-auto py-8 px-4">
+<body>
+    <div x-data="{ activeTab: 'overview', searchQuery: '' }" class="ds-shell">
 
-        <!-- SSW Branded Header -->
-        <header class="mb-8">
-            <div class="flex items-center justify-between flex-wrap gap-4">
-                <div class="flex items-center gap-4">
-                    <!-- Official SSW logo (inlined as a data URI by build-dashboard.py) -->
-                    <img src="{{SSW_LOGO}}" alt="SSW" class="h-10 w-auto" />
-                    <div class="h-10 w-px bg-ssw-gray-200"></div>
-                    <div>
-                        <h1 class="text-3xl text-ssw-charcoal">
-                            <span class="font-extrabold">{{SURVEY_NAME}}</span>
-                        </h1>
-                        <p class="text-ssw-gray-500 mt-1 font-medium">Survey Analysis Dashboard</p>
-                    </div>
+        <!-- DS Sidebar navigation -->
+        <aside class="ds-sidebar no-print">
+            <div class="flex items-center px-2 mb-7">
+                <img src="{{SSW_LOGO}}" alt="SSW" class="h-7 w-auto" />
+            </div>
+            <p class="px-3 mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-ssw-gray-400">Report</p>
+            <nav class="flex flex-col gap-1">
+                <button @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                    <span>Overview</span>
+                </button>
+                <button @click="activeTab = 'responses'" :class="activeTab === 'responses' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="9"/><line x1="22" y1="20" x2="2" y2="20"/></svg>
+                    <span>Responses</span>
+                </button>
+                <button @click="activeTab = 'themes'" :class="activeTab === 'themes' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    <span>Themes</span>
+                </button>
+                <button @click="activeTab = 'people'" :class="activeTab === 'people' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>People</span>
+                </button>
+                <button @click="activeTab = 'insights'" :class="activeTab === 'insights' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
+                    <span>Insights &amp; Actions</span>
+                </button>
+            </nav>
+            <div class="mt-auto px-3 pt-6 text-[0.7rem] text-ssw-gray-400 leading-relaxed">
+                Chewing the Fat — weekly tech-topic digest
+            </div>
+        </aside>
+
+        <!-- Main column -->
+        <div class="min-w-0">
+            <!-- Top bar -->
+            <header class="ds-topbar">
+                <div class="min-w-0">
+                    <h1 class="text-lg md:text-2xl text-ssw-charcoal truncate"><span class="font-bold">{{SURVEY_NAME}}</span></h1>
+                    <p class="text-ssw-gray-500 text-sm font-medium">Survey Analysis Dashboard &middot; {{RESPONSE_COUNT}} responses &middot; {{COMPLETION_RATE}}% completion{{PER_SURVEY_COUNTS}}</p>
                 </div>
-                <div class="text-right">
-                    <p class="text-2xl font-bold text-ssw-red">{{DATE}}</p>
-                    <p class="text-sm text-ssw-gray-500 font-medium">{{RESPONSE_COUNT}} responses • {{COMPLETION_RATE}}% completion{{PER_SURVEY_COUNTS}}</p>
+                <div class="text-right flex-shrink-0">
+                    <p class="text-base md:text-lg font-bold text-ssw-red">{{DATE}}</p>
                 </div>
+            </header>
+
+            <!-- Mobile tab row (sidebar is hidden below lg) -->
+            <div class="ds-topbar-tabs no-print gap-1 px-4 py-2 overflow-x-auto border-b border-ssw-gray-200 bg-white">
+                <template x-for="t in [['overview','Overview'],['responses','Responses'],['themes','Themes'],['people','People'],['insights','Insights']]" :key="t[0]">
+                    <button @click="activeTab = t[0]" x-text="t[1]"
+                            :class="activeTab === t[0] ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal border border-ssw-gray-200'"
+                            class="px-3 py-1.5 rounded-ds-sm text-sm font-semibold whitespace-nowrap"></button>
+                </template>
             </div>
 
-            <!-- Key Metrics Bar -->
-            <div class="mt-6 grid grid-cols-2 md:grid-cols-4 gap-4">
-                {{KEY_METRICS_CARDS}}
-            </div>
-        </header>
+            <main class="ds-main">
+                <!-- Search & Expand Toolbar (visible on Responses, Themes, People tabs) -->
+                <div x-show="activeTab === 'responses' || activeTab === 'themes' || activeTab === 'people'" x-cloak class="search-toolbar no-print">
+                    <input type="text" x-model="searchQuery" placeholder="Search questions, themes, quotes..." aria-label="Search dashboard content">
+                    <button x-show="searchQuery.length > 0" @click="searchQuery = ''" title="Clear search">&times; Clear</button>
+                    <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
+                    <button @click="$dispatch('collapse-all')" title="Collapse all cards">Collapse All</button>
+                </div>
 
-        <!-- Tab Navigation - SSW Style -->
-        <nav class="flex flex-wrap gap-2 mb-6 border-b border-ssw-gray-200 pb-4 no-print">
-            <button @click="activeTab = 'overview'"
-                    :class="activeTab === 'overview' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                Overview
-            </button>
-            <button @click="activeTab = 'responses'"
-                    :class="activeTab === 'responses' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                Responses
-            </button>
-            <button @click="activeTab = 'themes'"
-                    :class="activeTab === 'themes' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                Themes
-            </button>
-            <button @click="activeTab = 'people'"
-                    :class="activeTab === 'people' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                People
-            </button>
-            <button @click="activeTab = 'insights'"
-                    :class="activeTab === 'insights' ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal hover:bg-ssw-gray-50 hover:border-ssw-red'"
-                    class="px-4 py-2 rounded-lg font-semibold transition-all shadow-sm border border-ssw-gray-200">
-                Insights &amp; Actions
-            </button>
-        </nav>
-
-        <!-- Search & Expand Toolbar (visible on Responses and Themes tabs) -->
-        <div x-show="activeTab === 'responses' || activeTab === 'themes' || activeTab === 'people'" x-cloak class="search-toolbar no-print">
-            <input type="text" x-model="searchQuery" placeholder="Search questions, themes, quotes..." aria-label="Search dashboard content">
-            <button x-show="searchQuery.length > 0" @click="searchQuery = ''" title="Clear search">&times; Clear</button>
-            <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
-            <button @click="$dispatch('collapse-all')" title="Collapse all cards">Collapse All</button>
-        </div>
-
-        <!-- Tab Content -->
-        <main>
             <!-- Overview Tab -->
             <div x-show="activeTab === 'overview'" x-cloak>
                 <!-- This week's recap video (injected only when a walkthrough was recorded) -->
                 {{RECAP_VIDEO}}
+
+                <!-- Key Metrics -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    {{KEY_METRICS_CARDS}}
+                </div>
+
                 <!-- Executive Summary -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
+                <section class="ssw-card p-6 mb-6">
                     <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
                         <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
                         Executive Summary
@@ -489,8 +566,18 @@
                     </ul>
                 </section>
 
+                <!-- Hard Truths (moved high — the punchy, act-on-this synthesis) -->
+                <section class="mb-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-ds p-6">
+                    <h2 class="text-lg text-ssw-red-700 mb-4 flex items-center font-bold">
+                        Hard Truths
+                    </h2>
+                    <div class="space-y-2 text-ssw-charcoal">
+                        {{HARD_TRUTHS}}
+                    </div>
+                </section>
+
                 <!-- Overall Verdict -->
-                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
+                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-ds shadow-lg p-6 text-white mb-6">
                     <div class="flex items-center justify-between">
                         <div>
                             <h2 class="text-lg font-bold">Overall Verdict</h2>
@@ -504,35 +591,7 @@
                 {{FOCUS_SUMMARY}}
 
                 <!-- Standout Responses (notable individual answers worth highlighting) -->
-                <!--
-                     Each standout response MUST follow this structure:
-
-                     <div class="standout-card mb-4">
-                       <div class="flex items-center gap-2 mb-2">
-                         <span class="font-semibold text-ssw-charcoal">Respondent Name</span>
-                         <span class="standout-badge">Why it stands out</span>
-                       </div>
-                       <p class="text-xs text-ssw-gray-500 mb-1">Answering: "Question text"</p>
-                       <blockquote class="quote-block">"Verbatim response text"</blockquote>
-                     </div>
-
-                     Wrap all standout cards in a section with heading:
-                     <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
-                       <h2 class="text-lg text-ssw-charcoal mb-4">Standout Responses</h2>
-                       ...cards...
-                     </section>
-                -->
                 {{STANDOUT_RESPONSES}}
-
-                <!-- Hard Truths Section -->
-                <section class="mt-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-xl p-6">
-                    <h2 class="text-lg text-ssw-red-700 mb-4 flex items-center font-bold">
-                        Hard Truths
-                    </h2>
-                    <div class="space-y-2 text-ssw-charcoal">
-                        {{HARD_TRUTHS}}
-                    </div>
-                </section>
             </div>
 
             <!-- Responses Tab -->
@@ -678,9 +737,7 @@
                         {{THEME_CARDS}}
                     </div>
                 </section>
-
-                <!-- Notable Quotes (whole section omitted when there are none) -->
-                {{NOTABLE_QUOTES_SECTION}}
+                <!-- Notable Quotes section removed — redundant with the theme quotes above. -->
             </div>
 
             <!-- People Tab -->
@@ -781,7 +838,8 @@
             </div>
             <p class="text-ssw-gray-400">{{GENERATED_AT}}</p>
         </footer>
-    </div>
+        </div><!-- /main column -->
+    </div><!-- /ds-shell -->
 
     <!-- Chart.js Initialization with SSW Colors -->
     <script>

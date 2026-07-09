@@ -195,6 +195,7 @@ A single topic (e.g., "career development frustration") must NOT appear as:
 - Quotes include respondent name for attribution and the question being answered for context
 
 **Styling rules:**
+- **Built on the SSW Design System** (like SSW.Tiger). The dashboard uses a **DS app-shell**: a left **sidebar nav** (logo + Overview/Responses/Themes/People/Insights, `.ds-navitem`) + a **top bar** (survey name + date), not top tabs. The `<head>` aligns the Tailwind config + `:root` tokens to the DS (primary `#CD4242`, semantic success/warning/destructive tokens, `--radius-lg` 8px, DS raised/overlay shadows, **Inter + IBM Plex Mono** fonts). `.ssw-card` is redefined to inherit DS chrome (white surface, 10% border, raised shadow) so all generated cards pick it up automatically. On mobile (<1024px) the sidebar collapses to a horizontal tab row. Don't reintroduce the old top-tab bar.
 - In warning/alert sections (e.g. Hard Truths, Red Flags), keep body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
 - **Use emoji sparingly.** Do NOT decorate tab labels or section headings with emoji — meaning is carried by the colour system (red/amber/green borders and badges), not icons. A rare inline semantic marker is fine, but default to none. The renderer (`build-dashboard.py`) and template are already emoji-free; keep them that way.
 - **All Overview sections use the same format:** `<li>` bullet points inside `<ul>`. Do NOT use `<div>` card grids or colored background cards for these — keep them as clean bullet lists.
@@ -213,13 +214,16 @@ Any color NOT in this table is **forbidden** as a background. No `bg-blue-*`, `b
 
 ### Tab 1: Overview
 
-All sections use `<li>` bullet points inside `<ul>` — consistent style throughout.
+Order (top to bottom): recap video → **Key Metrics** → Executive Summary → **Hard Truths** → Overall Verdict → Focus Area → Standout Responses.
 
+- **Key Metrics** — Four DS stat cards. **Led by the opinion/adoption signal — NOT the video/rule content ratings** (see "De-emphasise the video & rule ratings" below). Built by `build_key_metrics`: top pick, adoption frontier, task value, + one more opinion signal.
 - **Executive Summary** — Max 5 factual bullet points. Each bullet is one short sentence. No commentary or analysis.
+- **Hard Truths** — Sits **high in the Overview** (right after the Executive Summary) — it's the punchy, act-on-this synthesis and deserves prominence. **MAX 2 items, each max 2 sentences.** Punchy and direct. ONLY high-level synthesis that genuinely doesn't fit in Insights, Themes, or People. Keep the name "Hard Truths".
 - **Overall Verdict** — Grade (A-F) with one-sentence summary. Dark gradient banner style.
 - **Focus Area Summary** (if focus prompt provided) — Dedicated card summarizing focus-area findings from all agents.
 - **Standout Responses** — Notable individual answers worth highlighting. Each card shows respondent name, question answered, blockquote response, and a badge explaining why it stands out. Uses `.standout-card` styling with `.standout-badge` for the reason.
-- **Hard Truths** — **MAX 2 items, each max 2 sentences.** Punchy and direct. ONLY high-level synthesis that genuinely doesn't fit in Insights, Themes, or People.
+
+**De-emphasise the video & rule ratings.** The insight rarely lives in the video-rating or rule-rating numbers (two near-identical 4.x/5 content scores). They stay available in the Responses tab, but must NOT lead the headline Key Metrics, the Executive Summary, or the verdict. Lead with the choice/adoption signal, the task-value rating, and the free-text opinions. The agent prompts (`quantitative-analyzer`, `consolidator`) carry the same directive.
 
 ### Tab 2: Responses
 - **Search + Expand Toolbar** — Visible when Responses tab is active. Contains search input (`x-model="searchQuery"`), clear button, "Expand All" and "Collapse All" buttons that dispatch Alpine.js events.
@@ -236,12 +240,13 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
   - **Search filtering:** Each card has a baked lowercase search index (max 500 chars) in `x-show` for instant client-side filtering
   - Cards listen to `@expand-all.window` and `@collapse-all.window` events
   - Flagged questions have colored borders (red for critical, amber for warning) to signal "worth opening"
-- **Free-Text Question Cards** — For each item in `freeTextQuestions`, use the same expandable pattern but showing text responses with respondent names instead of score bars:
-  - **Collapsed state:** Question text, "Free Text" badge, response count, chevron icon
+- **Free-Text Question Cards** — For each item in `freeTextQuestions`, use the same expandable pattern but showing text responses with respondent names instead of score bars. **Lead with the AI-curated insightful/opinionated picks, not the raw dump:**
+  - **Collapsed state:** Question text, "Free Text" badge, "`N` picks · `M` responses", chevron icon
   - **Expanded state** (uses `<template x-if="open">` for DOM efficiency):
-    - Individual responses list using **`responses[].respondent`** for name and **`responses[].text`** for content
-    - First 20 visible, rest behind "Show more" button (`showAll`)
-  - **CRITICAL field names:** `freeTextQuestions[].responses` uses `respondent` (name) and `text` (content) — NOT `name`/`value`. These MUST match the consolidated.json schema exactly.
+    - A **"Most insightful responses"** block listing `freeTextQuestions[].curated[]` (the strong opinions), each with `respondent` + `text`
+    - A **"Show all `M` responses"** toggle (`showAll`) revealing the full `responses[]` list below
+  - **How `curated` is chosen:** `build-consolidated.py` selects responses the qualitative agent already surfaced (theme quotes / standouts / notable) first, then tops up by a substance/opinion heuristic; filler ("N/A", "none") is dropped.
+  - **CRITICAL field names:** `freeTextQuestions[]` uses `curated[]` and `responses[]`, each item `respondent` (name) + `text` (content) — NOT `name`/`value`. These MUST match the consolidated.json schema exactly.
   - Same search filtering, expand-all/collapse-all event listeners as numeric cards
 
 ### Tab 3: Themes
@@ -256,7 +261,7 @@ All sections use `<li>` bullet points inside `<ul>` — consistent style through
     - ALL quotes for the theme (not just 2-3 — the full `allQuotes` array). Each quote MUST show: the question being answered (small text above the quote), the verbatim quote, and the respondent name
   - Search filtering via baked lowercase search index
   - Cards listen to `@expand-all.window` and `@collapse-all.window` events
-- **Notable Quotes** — Curated attributed quotes, each showing the question being answered, verbatim quote, respondent name, and theme. When there are no notable quotes the entire section is omitted (no empty box).
+- *(No "Notable Quotes" section — it was dropped as redundant with the theme `allQuotes` shown above. `consolidated.json` still carries `notableQuotes` because the recap video uses it as a quote source; the dashboard just doesn't render it.)*
 
 ### Tab 4: People
 - **Search** — Filter by respondent name using the shared search toolbar
@@ -321,7 +326,8 @@ The `consolidator` agent's only job is a light **polish pass after the script ru
 |---|---|---|---|
 | **Numeric** | `responses.questionBreakdown[].individualResponses[]` | `respondent` | `value` |
 | **Categorical** | `responses.categoricalQuestions[].individualResponses[]` | `respondent` | `value` |
-| **Free-Text** | `responses.freeTextQuestions[].responses[]` | `respondent` | `text` |
+| **Free-Text (curated picks)** | `freeTextQuestions[].curated[]` | `respondent` | `text` |
+| **Free-Text (all raw)** | `freeTextQuestions[].responses[]` | `respondent` | `text` |
 | **Theme Quotes** | `themes.themes[].allQuotes[]` | `name` | `text` |
 | **Notable Quotes** | `themes.notableQuotes[]` | `name` | `text` |
 | **Standout Responses** | `overview.standoutResponses[]` | `name` | `response` |

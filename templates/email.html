@@ -1,34 +1,39 @@
 <!--
-  SSW "Chewing the Fat" result email — standard SSW format, clean and light.
-  Filled by processor.js buildEmail() and bound to Flow B's Outlook body (Is HTML on).
+  SSW "Chewing the Fat" result email — themed to match the SSW Design System report.
+  Filled by processor.js buildEmail(), bound to Flow B's Outlook body (Is HTML on).
 
   Rules for editing:
-  - Table-based layout + inline styles ONLY (Outlook ignores <style> blocks, flexbox, grid).
-  - SSW palette only: Red #CC4141, Charcoal #333333, greys #797979 / #AAAAAA / #EEEEEE.
-  - Keep it light on text — logo, the topic (H1), the "Digesting the Fat" subtitle,
-    one meta line, an optional one-line verdict, a button, and the plain link as a
-    fallback. Don't reintroduce eyebrows, callout borders, or the squares motif.
-  - Placeholders (filled in code): {{LOGO_BLOCK}} {{TOPIC}} {{META}} {{VERDICT_BLOCK}}
-    {{DASHBOARD_URL}} {{BUTTON_LABEL}} {{FOOTER}}
+  - Table-based + inline styles ONLY (Outlook ignores <style>, flexbox, grid, border-radius/box-shadow — those degrade gracefully).
+  - DS theme: white card on #fafafa ground, 1px hairline border, 8px radius, subtle raised shadow; SSW primary #CD4242; Inter (Segoe/Arial fallback); charcoal text, grey muted.
+  - LESS IS MORE. Don't add copy for the sake of it — logo, topic, the "Digesting the Fat" line, response count, one-line verdict, one button, the plain link, a one-line footer. Nothing else.
+  - Placeholders: {{LOGO_BLOCK}} {{TOPIC}} {{META}} {{VERDICT_BLOCK}} {{DASHBOARD_URL}} {{BUTTON_LABEL}} {{FOOTER}}
 -->
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#ffffff;margin:0;padding:0">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#fafafa;margin:0;padding:0">
   <tr>
     <td align="center" style="padding:32px 16px">
-      <table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;max-width:560px;font-family:'Segoe UI',Arial,Helvetica,sans-serif;color:#333333">
-        <tr><td style="padding:0 0 18px">{{LOGO_BLOCK}}</td></tr>
-        <tr><td style="border-top:3px solid #CC4141;font-size:0;line-height:0;height:0">&nbsp;</td></tr>
-        <tr><td style="padding:22px 0 2px;font-size:24px;font-weight:700;line-height:1.25;color:#333333">{{TOPIC}}</td></tr>
-        <tr><td style="padding:0 0 2px;font-size:15px;font-weight:600;color:#CC4141">Digesting the Fat</td></tr>
-        <tr><td style="padding:0 0 18px;font-size:14px;color:#797979">{{META}}</td></tr>
-        {{VERDICT_BLOCK}}
-        <tr><td style="padding:4px 0 14px">
-          <a href="{{DASHBOARD_URL}}" style="background:#CC4141;color:#ffffff;text-decoration:none;padding:13px 30px;border-radius:6px;font-weight:700;font-size:15px;display:inline-block">{{BUTTON_LABEL}}</a>
-        </td></tr>
-        <tr><td style="padding:0 0 26px;font-size:12px;line-height:1.5;color:#797979;word-break:break-all">
-          Or paste this link into your browser:<br />
-          <a href="{{DASHBOARD_URL}}" style="color:#CC4141;text-decoration:underline">{{DASHBOARD_URL}}</a>
-        </td></tr>
-        <tr><td style="border-top:1px solid #EEEEEE;padding:16px 0 0;font-size:12px;color:#AAAAAA">{{FOOTER}}</td></tr>
+      <!-- DS card -->
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px;background:#ffffff;border:1px solid rgba(0,0,0,0.08);border-radius:8px;box-shadow:0px 2px 4px rgba(0,0,0,0.04),0px 4px 8px rgba(0,0,0,0.03)">
+        <tr>
+          <td style="padding:32px 36px">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="font-family:'Inter','Segoe UI',Arial,Helvetica,sans-serif;color:#333333">
+              <tr><td style="padding:0 0 18px;border-bottom:1px solid #EEEEEE">{{LOGO_BLOCK}}</td></tr>
+              <tr><td style="padding:22px 0 1px;font-size:23px;font-weight:700;line-height:1.25;color:#1A1A1A">{{TOPIC}}</td></tr>
+              <tr><td style="padding:0 0 2px;font-size:14px;font-weight:600;color:#CD4242">Digesting the Fat</td></tr>
+              <tr><td style="padding:0 0 18px;font-size:14px;color:#71717A">{{META}}</td></tr>
+              {{VERDICT_BLOCK}}
+              <tr><td style="padding:4px 0 16px">
+                <a href="{{DASHBOARD_URL}}" style="background:#CD4242;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:6px;font-weight:600;font-size:15px;display:inline-block">{{BUTTON_LABEL}}</a>
+              </td></tr>
+              <tr><td style="padding:0;font-size:12px;line-height:1.5;color:#A1A1AA;word-break:break-all">
+                <a href="{{DASHBOARD_URL}}" style="color:#A1A1AA;text-decoration:underline">{{DASHBOARD_URL}}</a>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+      <!-- footer on the ground, below the card -->
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:600px;max-width:600px">
+        <tr><td style="padding:16px 6px 0;font-size:12px;color:#A1A1AA;font-family:'Inter','Segoe UI',Arial,Helvetica,sans-serif">{{FOOTER}}</td></tr>
       </table>
     </td>
   </tr>

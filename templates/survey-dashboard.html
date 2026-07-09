@@ -479,7 +479,9 @@
     </style>
 </head>
 <body>
-    <div x-data="{ activeTab: 'overview', searchQuery: '' }" class="ds-shell">
+    <div x-data="{ activeTab: 'overview', searchQuery: '' }"
+         x-effect="if (activeTab !== 'people' && searchQuery !== '') searchQuery = ''"
+         class="ds-shell">
 
         <!-- DS Sidebar navigation -->
         <aside class="ds-sidebar no-print">
@@ -537,10 +539,15 @@
             </div>
 
             <main class="ds-main">
-                <!-- Search & Expand Toolbar (visible on Responses, Themes, People tabs) -->
-                <div x-show="activeTab === 'responses' || activeTab === 'themes' || activeTab === 'people'" x-cloak class="search-toolbar no-print">
-                    <input type="text" x-model="searchQuery" placeholder="Search questions, themes, quotes..." aria-label="Search dashboard content">
+                <!-- People tab: search by name + expand/collapse -->
+                <div x-show="activeTab === 'people'" x-cloak class="search-toolbar no-print">
+                    <input type="text" x-model="searchQuery" placeholder="Search by name..." aria-label="Search respondents by name">
                     <button x-show="searchQuery.length > 0" @click="searchQuery = ''" title="Clear search">&times; Clear</button>
+                    <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
+                    <button @click="$dispatch('collapse-all')" title="Collapse all cards">Collapse All</button>
+                </div>
+                <!-- Responses & Themes: expand/collapse only (no search box) -->
+                <div x-show="activeTab === 'responses' || activeTab === 'themes'" x-cloak class="search-toolbar no-print" style="justify-content:flex-end">
                     <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
                     <button @click="$dispatch('collapse-all')" title="Collapse all cards">Collapse All</button>
                 </div>

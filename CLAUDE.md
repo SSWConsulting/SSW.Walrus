@@ -226,7 +226,7 @@ Order (top to bottom): recap video → **Key Metrics** → Executive Summary →
 **De-emphasise the video & rule ratings.** The insight rarely lives in the video-rating or rule-rating numbers (two near-identical 4.x/5 content scores). They stay available in the Responses tab, but must NOT lead the headline Key Metrics, the Executive Summary, or the verdict. Lead with the choice/adoption signal, the task-value rating, and the free-text opinions. The agent prompts (`quantitative-analyzer`, `consolidator`) carry the same directive.
 
 ### Tab 2: Responses
-- **Search + Expand Toolbar** — Visible when Responses tab is active. Contains search input (`x-model="searchQuery"`), clear button, "Expand All" and "Collapse All" buttons that dispatch Alpine.js events.
+- **Expand Toolbar** — On the Responses tab, only "Expand All" / "Collapse All" (they dispatch Alpine.js events). **No search box** on Responses/Themes — search is People-tab-only (the free-text search across cards was unreliable, so it was removed). `searchQuery` is cleared when leaving the People tab so it never filters these cards.
 - **Score Distribution Chart** — Chart.js bar chart showing overall distribution across all questions
 - **Survey Group Dividers** (multi-survey only) — Styled section headers between each survey's questions showing survey name and response count
 - **Question-by-Question Breakdown** — Interactive expandable cards (Alpine.js `x-data="{ open: false, showAll: false }"`):
@@ -250,7 +250,7 @@ Order (top to bottom): recap video → **Key Metrics** → Executive Summary →
   - Same search filtering, expand-all/collapse-all event listeners as numeric cards
 
 ### Tab 3: Themes
-- **Search + Expand Toolbar** — Shared with Responses tab. Filters theme cards by name, quote text, and respondent names.
+- **Expand Toolbar** — "Expand All" / "Collapse All" only (no search box — see Responses tab).
 - **Topic Stance** — Banner showing the team's overall stance on the topic (spectrum score + dominant stance, e.g. "Strongly adopted — past the 'should we' stage"), from `sentimentOverview`.
 - **Stance Profile Radar Chart** — Chart.js radar chart showing enthusiasm, pragmatism, curiosity, skepticism, frustration, indifference (the keys of `sentimentOverview.emotionalBreakdown`). `build-consolidated.py` normalises the sentiment agent's breakdown to these six lowercase keys wherever it put them; if none resolve, the dashboard hides the whole Stance Profile section rather than drawing an empty radar.
 - **Theme Cards** — Interactive expandable cards in single-column layout (`space-y-4`, NOT 2-column grid). Each card uses `x-data="{ open: false }"`:

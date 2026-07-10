@@ -214,7 +214,7 @@ function buildEmail(surveyName, dashboardUrl, meta) {
     .replace('{{VERDICT_BLOCK}}', verdictBlock)
     .replace(/\{\{DASHBOARD_URL\}\}/g, esc(dashboardUrl || '#'))
     .replace('{{BUTTON_LABEL}}', 'View the full report')
-    .replace('{{FOOTER}}', 'SSW &middot; Chewing the Fat — the weekly tech-topic poll');
+    .replace('{{FOOTER}}', 'SSW &middot; Chewing the Fat');
 
   return { message, emailHtml };
 }

@@ -89,17 +89,28 @@ The optional `consolidator` agent only does a light polish pass on synthesis fie
 
 ## Dashboard (`build-dashboard.py` + `survey-dashboard.html`)
 
-Five tabs, each owning one question (Overview / Responses / Themes / People / Insights &
-Actions). Renderer notes worth knowing:
+Five tabs (Overview / Responses / Themes / People / Insights & Actions) in an **SSW
+Design System app-shell** — a left sidebar nav + top bar (not top tabs), with the
+Tailwind config + `:root` tokens aligned to the DS (primary `#CD4242`, DS radius/shadows,
+Inter + IBM Plex Mono). `.ssw-card` is redefined to inherit DS chrome so generated cards
+pick it up automatically. Renderer notes worth knowing:
 
 - **SSW logo** — the official logo (`templates/assets/ssw-logo.png`) is inlined as a
-  base64 data URI into the header and footer, so the deployed HTML is self-contained.
+  base64 data URI into the sidebar and footer, so the deployed HTML is self-contained.
+- **Overview order** — Key Metrics → Executive Summary → **Hard Truths** (moved high) →
+  Overall Verdict → Standout Responses.
+- **De-emphasised ratings** — the headline Key Metrics deliberately exclude the
+  video/rule content ratings (they rarely carry insight); they lead with the
+  choice/adoption signal + task value. Same directive is in the analysis prompts.
 - **People tab photos** — each respondent card shows their SSW profile photo via
   `avatar_html()`. If `photoUrl` is null (non-SSW or unresolved name) or the image 404s,
   a `.js-avatar` onerror handler swaps in an initials placeholder — so a wrong photo is
   never shown.
-- **Notable Quotes** — the whole section is omitted when there are no notable quotes
-  (`render_notable_quotes_section()` returns `""`), rather than showing an empty box.
+- **Free-text curation** — free-text cards lead with `curated[]` (the AI-picked
+  insightful/opinionated responses) under a "Most insightful responses" heading, with a
+  "Show all" toggle revealing every raw response.
+- **No Notable Quotes section** — dropped as redundant with the theme quotes (the data
+  stays in `notableQuotes` for the recap video).
 - **Emoji** — decorative emoji were removed from tabs and headings; meaning is carried by
   the colour system (red/amber/green borders and badges), not icons.
 

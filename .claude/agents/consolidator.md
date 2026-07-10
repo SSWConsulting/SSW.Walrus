@@ -19,9 +19,9 @@ The four analysis-agent outputs for an SSW "Chewing the Fat" / Free Lunch survey
    It reads `quantitative.json` / `qualitative.json` / `sentiment.json` / `red-flags.json` and writes a complete `consolidated.json` with all the field names the dashboard binds to.
 
 2. **Polish only the synthesis fields** with small, targeted `Edit`s to the produced JSON:
-   - `executiveSummary.bullets` (max 5, factual, one sentence each) and `executiveSummary.overallVerdict`
-   - `keyMetrics` labels/values if a better headline number exists
-   - `hardTruths` (max 2, punchy)
+   - `executiveSummary.bullets` (max 5, factual, one sentence each) and `executiveSummary.overallVerdict` — lead with the adoption/opinion + task-value signal; **do not** headline the video or rule ratings (those two 4.x/5 content scores rarely carry the insight)
+   - `keyMetrics` labels/values if a better headline number exists (the script already excludes video/rule ratings from the headline cards — keep it that way)
+   - `hardTruths` (max 2, punchy) — this section is surfaced high in the Overview, so make it count
    - de-dup any obviously duplicated `themes`
    Do **NOT** rewrite the bulky arrays, regenerate the whole file, or change field names. If you have nothing to improve, leave it — the script's output is already valid.
 

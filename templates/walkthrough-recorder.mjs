@@ -353,7 +353,9 @@ async function graphCard(ch) {
       <h1 style="font:800 40px/1.1 ${font};margin:0 0 8px;letter-spacing:-0.8px">${ch.title || ''}</h1>
       <div style="font:500 18px ${font};opacity:0.7;margin-bottom:26px;max-width:900px;text-align:center">${ch.caption || ''}</div>
       <div style="width:1000px;height:540px"><canvas id="g"></canvas></div></div>${wm}`;
-    const palette = [accent, '#E25252', '#333333', '#666666', '#A33434', '#888888', '#B0B0B0'];
+    // Cards sit on a near-black background — every bar colour must hold contrast
+    // against #1a1a1a. No greys/dark tones (they disappear); reds + warm lights only.
+    const palette = [accent, '#E25252', '#F28B82', '#FFFFFF', '#FFB199', '#F6C6C6', '#FFD9A0'];
     const isRadar = ch.chartType === 'radar';
     // eslint-disable-next-line no-undef
     new Chart(document.getElementById('g'), {

@@ -71,13 +71,26 @@ python3 templates/build-walkthrough-plan.py \
   --out surveys/<survey>/<date>/walkthrough/plan.json
 ```
 
-It writes ~20 cards: **intro** → **topic** (the video + ratings) → **stat** →
-section **Where it wins** + several **quote** cards → a **montage** → two **graph**
-cards (ratings + tool tally) → section **The honest feedback** + contrarian
-**quote** cards → a **list** (recommendations) → a **names** montage (every
-respondent) → **outro**. Card kinds: `intro`/`outro`, `topic`, `section`, `stat`,
-`quote` (`{quote,name,context}`), `montage` (`{heading,quotes[]}`), `graph`
-(`{chartType,labels,data,horizontal,caption}`), `list`, `names`.
+It writes ~20 cards as a **default scaffold**: **intro** → **topic** (the video +
+ratings) → **stat** → section + **quote** cards → a **montage** → two **graph**
+cards → another section + **quote** cards → a **list** (recommendations) → a
+**names** montage (every respondent) → **outro**. Card kinds: `intro`/`outro`,
+`topic`, `section`, `stat`, `quote` (`{quote,name,context}`), `montage`
+(`{heading,quotes[]}`), `graph` (`{chartType,labels,data,horizontal,caption}`),
+`list`, `names`.
+
+**The middle of the scaffold is yours to replan — structure follows the story,
+not the template.** The generator's default section arc ("Where it wins" → "The
+honest feedback") fits many weeks but not all. Look at what the survey actually
+said and choose your own sections: their number, order, titles, and which quotes
+group under them (e.g. an adoption-gap week might be "The awareness gap" → "The
+practitioners' scars" → "Tooling to the rescue"). Do NOT force a
+contrarian/negative section when the week genuinely has no pushback — a
+manufactured "honest feedback" beat is the video equivalent of a fabricated
+quote. Only the bookends are fixed: intro, topic, what's-next `list`, the
+**names** montage (last-but-one, so everyone appears), and outro. When you
+retitle sections, **update the intro `agenda` and outro `recap` to match** —
+they're generated from the default titles.
 
 **Then refine the `narration` field** — this is the craft. **Do NOT read quotes
 verbatim** — the narrator *paraphrases* in their own voice and pulls out the point;
@@ -104,6 +117,9 @@ the card already shows the full quote, with the key phrase highlighted. Rules:
   ⇒ feature more people, longer).
 - You can reorder cards, add/remove `quote`/`montage` cards, or add a `stat`/
   `graph`. Keep the **names** montage last-but-one so everyone appears.
+- **Graph contrast:** cards render on a near-black background — chart colours
+  must be reds/warm lights only (the recorder's palette enforces this). Never
+  grey/dark bars; they have no contrast against the background.
 
 ## 3. Record — straight INTO the dashboard folder
 

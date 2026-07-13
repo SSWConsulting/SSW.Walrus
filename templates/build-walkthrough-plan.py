@@ -234,7 +234,7 @@ def main():
     # section: honest feedback
     chapters.append({"kind": "section", "eyebrow": "Keeping it real", "title": "The honest feedback",
                      "subtitle": "The contrarians, the gripes, and the fair points worth hearing.",
-                     "narration": "Now — the honest feedback. The best surveys have people pushing back, and this one did."})
+                     "narration": "Now — the honest feedback."})
     honest_leads = ["{n} pushed back:", "{n} wasn't sold:", "{n} raised a fair point.", "{n} kept it real:"]
     for i, q in enumerate(honest[:4]):
         chapters.append(quote_card(q, honest_leads[i % len(honest_leads)].format(n=q["name"])))

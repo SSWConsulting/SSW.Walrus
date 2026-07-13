@@ -57,8 +57,6 @@ Monday 8am AEST
 | Key Vault | `kv-walrus-{env}` | Secrets storage (RBAC-enabled) |
 | Storage Account | `sawalrus{env}` | Queues (`survey-processing`, `survey-done`) + Blobs (`survey-inbox`, `survey-results`) |
 | Dashboard Storage | `sawalrus{env}web` | Static website (`$web`) hosting for dashboards |
-| Log Analytics | `log-walrus-{env}` | Centralized logging |
-| App Insights | `ai-walrus-{env}` | Application monitoring |
 | Container App Env | `ce-walrus-{env}` | Container runtime environment |
 | Container App Job | `job-walrus-{env}` | Claude Code processor |
 | Function App | `func-walrus-{env}` | Queue trigger → starts the Container App Job |
@@ -156,7 +154,7 @@ pushes to `main`.
 | `DASHBOARD_STORAGE_ACCOUNT` | Bicep | Static website storage account for dashboards |
 | `DASHBOARD_BASE_URL` | Bicep | Static website host used to build the public dashboard URL |
 | `KEY_VAULT_URL` | Bicep | Key Vault URL (for the Claude OAuth token) |
-| `CLAUDE_MODEL` | Bicep | Claude model (default: claude-sonnet-4-6) |
+| `CLAUDE_MODEL` | Bicep | Claude model (default: claude-opus-4-8) |
 | `AZURE_CLIENT_ID` | Bicep | Managed identity client ID |
 
 ### Function App

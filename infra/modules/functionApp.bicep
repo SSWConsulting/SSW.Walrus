@@ -20,9 +20,6 @@ param keyVaultUrl string
 @secure()
 param storageConnectionString string
 
-@description('App Insights connection string')
-param appInsightsConnectionString string
-
 @description('Container App Job name')
 param containerAppJobName string
 
@@ -78,10 +75,6 @@ resource functionApp 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'WEBSITE_NODE_DEFAULT_VERSION'
           value: '~20'
-        }
-        {
-          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-          value: appInsightsConnectionString
         }
         {
           name: 'AZURE_CLIENT_ID'

@@ -2,31 +2,40 @@
 """
 build-consolidated.py — deterministic consolidator for Chewing the Fat surveys.
 
-Reads the four analysis-agent outputs (quantitative / qualitative / sentiment /
-red-flags JSON) and assembles a single consolidated.json with the exact field
-names the dashboard renderer + slide generator bind to.
+Assembles consolidated.json — the single input the dashboard renderer, result
+email, and recap video bind to — from two sources:
 
-WHY THIS EXISTS: the bulky parts of consolidated.json (every question's
-individualResponses, every person's profile, every theme's allQuotes) are pure
-mechanical data pivots. Having the LLM *generate* thousands of lines of JSON as
-output tokens is slow and does not scale (a 79-respondent survey blew a 60-minute
-job timeout). The agents already emit all this data; this script stitches it
-together in milliseconds. The LLM is left to do analysis, not retyping.
+1. THE RAW SURVEY FILE (CSV/XLSX next to the analysis dir) — the source of
+   truth for ALL bulk data: individual responses, tallies, means, distributions,
+   people profiles, response counts. Extracted in code (`extract_survey`);
+   no LLM is in this path.
+2. The four analysis-agent outputs (quantitative / qualitative / sentiment /
+   red-flags JSON) — synthesis only: themes, quotes, commentary, signals.
+   Every quote they surface is verified against the raw file (`QuoteGrounder`).
+
+WHY: LLM agents asked to re-emit bulk survey data fabricate it — a deployed run
+was found with 95% of attributed quotes invented (real names, fake words).
+Bulk data must come from the file; the LLM only analyses, never transcribes.
 
 Usage:
   python3 build-consolidated.py <analysis-dir> \
       [--survey-name NAME] [--topic TOPIC] [--date DD/MM/YYYY] \
-      [--rule-url URL] [--focus TEXT] [--out PATH]
+      [--rule-url URL] [--focus TEXT] [--data survey.csv|.xlsx] [--out PATH]
 
 Reads  <analysis-dir>/{quantitative,qualitative,sentiment,red-flags}.json
+       + the raw survey file (--data, or *.csv/*.xlsx next to <analysis-dir>)
 Writes <analysis-dir>/consolidated.json (or --out).
 """
 
 import argparse
+import csv
+import difflib
+import glob
 import json
 import os
 import re
 import sys
+import unicodedata
 from collections import OrderedDict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -122,6 +131,251 @@ def round1(x):
         return None
 
 
+# ----------------------------------------------------------------------------
+# source-of-truth extraction — bulk data comes from the survey file, NOT the LLM
+# ----------------------------------------------------------------------------
+# Every hard fact in the dashboard (individual responses, tallies, means,
+# distributions, people profiles) is extracted from the raw CSV/XLSX by this
+# code. The analysis agents only contribute synthesis (themes, insights,
+# commentary), and any quote text they reference is verified by QuoteGrounder.
+
+def load_rows(path):
+    """Read a survey export (CSV or XLSX) -> list of {header: str-value} rows."""
+    if path.lower().endswith((".xlsx", ".xls")):
+        import openpyxl
+        ws = openpyxl.load_workbook(path, read_only=True, data_only=True).active
+        vals = ws.iter_rows(values_only=True)
+        headers = [re.sub(r"\s+", " ", str(h or "")).strip() for h in next(vals)]
+        return [
+            {h: ("" if v is None else str(v).strip()) for h, v in zip(headers, row)}
+            for row in vals if any(v is not None and str(v).strip() for v in row)
+        ]
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        return [
+            {re.sub(r"\s+", " ", k or "").strip(): str(v or "").strip() for k, v in row.items()}
+            for row in csv.DictReader(f)
+        ]
+
+
+_META_RE = re.compile(r"^(id|start time|completion time|last modified.*|email.*|name)$", re.I)
+_ADMIN_RE = re.compile(r"free lunch|order form|are you currently blocked|blocking you|retreat", re.I)
+_OPT_PREFIX = re.compile(r"^\s*\d+\.\s*")
+
+
+def _clean_option(v):
+    return re.sub(r"\s+", " ", _OPT_PREFIX.sub("", str(v))).strip()
+
+
+def _find_name_col(headers):
+    for h in headers:
+        if h.strip().lower() == "name":
+            return h
+    for h in headers:
+        if "name" in h.strip().lower() and "project" not in h.lower():
+            return h
+    return None
+
+
+def extract_survey(rows):
+    """Deterministically classify each column and extract the real responses.
+
+    Returns {"questions": [...], "freeText": [...], "excluded": [...],
+             "respondents": [names]} — the ground truth the dashboard binds to.
+    """
+    if not rows:
+        return None
+    headers = list(rows[0].keys())
+    name_col = _find_name_col(headers)
+    respondents = [r.get(name_col, "").strip() for r in rows] if name_col else []
+
+    questions, free_text, excluded = [], [], []
+    total = len(rows)
+    for h in headers:
+        head_line = h.split("\n")[0].strip()
+        if _META_RE.match(head_line):
+            continue
+        answered = [(r.get(name_col, "").strip() or "—", r[h]) for r in rows if r.get(h, "").strip()]
+        if not answered:
+            continue
+        vals = [v for _, v in answered]
+        skip_rate = whole(100 * (total - len(answered)) / total) or 0
+        qtext = re.sub(r"\s+", " ", h).strip()
+        is_admin = bool(_ADMIN_RE.search(h))
+
+        numeric = [v for v in vals if re.fullmatch(r"\d+(\.\d+)?", v)]
+        if len(numeric) == len(vals) and max(float(v) for v in vals) <= 10:
+            scores = [float(v) for v in vals]
+            dist = {}
+            for s in scores:
+                key = str(whole(s))
+                dist[key] = dist.get(key, 0) + 1
+            q = {
+                "kind": "rating", "text": qtext,
+                "scaleMax": 5 if max(scores) <= 5 else 10,
+                "mean": round1(sum(scores) / len(scores)),
+                "distribution": OrderedDict(sorted(dist.items(), key=lambda kv: int(kv[0]))),
+                "skipRate": skip_rate, "responseCount": len(answered),
+                "individualResponses": [{"respondent": nm, "value": float(v)} for nm, v in answered],
+            }
+        elif sum(1 for v in vals if ";" in v) >= max(1, len(vals) // 3):
+            tally = OrderedDict()
+            per_person = []
+            for nm, v in answered:
+                opts = [_clean_option(p) for p in v.split(";") if _clean_option(p)]
+                for o in opts:
+                    tally[o] = tally.get(o, 0) + 1
+                per_person.append({"respondent": nm, "value": "; ".join(opts)})
+            tally = OrderedDict(sorted(tally.items(), key=lambda kv: -kv[1]))
+            q = {
+                "kind": "multi-select", "text": qtext,
+                "distribution": tally,
+                "tally": [{"option": o, "count": c} for o, c in tally.items()],
+                "skipRate": skip_rate, "responseCount": len(answered),
+                "individualResponses": per_person,
+            }
+        else:
+            cleaned = [(nm, _clean_option(v)) for nm, v in answered]
+            counts = OrderedDict()
+            for _, v in cleaned:
+                counts[v] = counts.get(v, 0) + 1
+            top = sorted(counts.values(), reverse=True)[:8]
+            # long one-off "Other" answers don't disqualify a choice question —
+            # only the repeated options must look like fixed options, and a
+            # choice question must actually have repeats (else it's free text)
+            short = all(len(o) <= 120 for o, c in counts.items() if c >= 2)
+            if (short and max(counts.values()) >= 2 and len(cleaned) >= 5
+                    and sum(top) >= 0.7 * len(cleaned) and len(counts) <= max(10, total // 4)):
+                tally = OrderedDict(sorted(counts.items(), key=lambda kv: -kv[1]))
+                q = {
+                    "kind": "single-select", "text": qtext,
+                    "distribution": tally,
+                    "tally": [{"option": o, "count": c} for o, c in tally.items()],
+                    "skipRate": skip_rate, "responseCount": len(answered),
+                    "individualResponses": [{"respondent": nm, "value": v} for nm, v in cleaned],
+                }
+            else:
+                if is_admin:
+                    excluded.append({"text": qtext, "reason": "Admin/logistics question (auto-demoted)"})
+                    continue
+                free_text.append({
+                    "text": qtext, "responseCount": len(answered),
+                    "participationRate": whole(100 * len(answered) / total) or 0,
+                    "responses": [{"respondent": nm, "text": v} for nm, v in answered],
+                })
+                continue
+        if is_admin:
+            excluded.append({"text": qtext, "reason": "Admin/logistics question (auto-demoted)"})
+            continue
+        questions.append(q)
+
+    for i, q in enumerate(questions):
+        q["id"] = f"q{i+1}"
+    for i, q in enumerate(free_text):
+        q["id"] = f"qt{i+1}"
+    return {"questions": questions, "freeText": free_text,
+            "excluded": excluded, "respondents": respondents}
+
+
+# ----------------------------------------------------------------------------
+# quote grounding — anti-hallucination gate against the raw survey data
+# ----------------------------------------------------------------------------
+# Every quote the agents emit (theme quotes, notable quotes, standouts) is
+# checked against the respondent's actual cells in the raw data. Verbatim
+# (after normalisation) passes; a near-match (agent fixed a typo / trimmed) is
+# REPAIRED back to the real cell text; anything else is DROPPED and reported.
+# This is the single chokepoint — the dashboard, result email, and recap video
+# all render from consolidated.json.
+
+def _norm_text(s):
+    s = unicodedata.normalize("NFKD", str(s or ""))
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9 ]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+class QuoteGrounder:
+    def __init__(self, paths):
+        self.sources = [os.path.basename(p) for p in paths]
+        self.by_name = {}      # normalised respondent name -> [raw cell, ...]
+        self.rows = []
+        cells = []
+        for path in paths:
+            rows = load_rows(path)
+            self.rows.extend(rows)
+            for row in rows:
+                name_col = _find_name_col(list(row.keys()))
+                nm = _norm_text(row.get(name_col, "") if name_col else "")
+                for v in row.values():
+                    v = str(v or "").strip()
+                    if v:
+                        cells.append(v)
+                        if nm:
+                            self.by_name.setdefault(nm, []).append(v)
+        self.global_corpus = " ||| ".join(_norm_text(c) for c in cells)
+        self.checked = self.repaired = self.dropped = 0
+        self.dropped_items = []
+
+    def _corpus_for(self, name):
+        cells = self.by_name.get(_norm_text(name))
+        if cells:
+            return cells, " ||| ".join(_norm_text(c) for c in cells)
+        return None, self.global_corpus
+
+    def ground(self, name, text):
+        """Return text verbatim if traceable to the source data, the real cell
+        text if it's a near-match (repair), or None if it can't be traced."""
+        t = _norm_text(text)
+        if not t:
+            return text
+        self.checked += 1
+        cells, corpus = self._corpus_for(name)
+        if t in corpus:
+            return text
+        # spliced excerpt ("..." joins, or non-adjacent sentences run together) —
+        # keep only if EVERY substantial sentence is verbatim from this person
+        parts = re.split(r"\.\.\.|…|(?<=[.!?])\s+", str(text))
+        if len(parts) > 1:
+            frags = [_norm_text(p) for p in parts if len(_norm_text(p)) >= 12]
+            if frags and all(f in corpus for f in frags):
+                return text
+        # near-match against the respondent's own cells -> repair to the truth
+        if cells:
+            # same answer, silently edited (identical long opening) -> real full cell
+            if len(t) >= 80:
+                for c in cells:
+                    if t[:80] in _norm_text(c):
+                        self.repaired += 1
+                        return c.strip()
+            best = max(cells, key=lambda c: difflib.SequenceMatcher(None, t, _norm_text(c)).ratio())
+            if difflib.SequenceMatcher(None, t, _norm_text(best)).ratio() >= 0.8:
+                self.repaired += 1
+                return best.strip()
+        self.dropped += 1
+        self.dropped_items.append({"name": str(name or ""), "text": str(text)[:120]})
+        sys.stderr.write(f"[build-consolidated] DROPPED unverifiable quote ({name}): {str(text)[:80]!r}\n")
+        return None
+
+    def summary(self):
+        return {
+            "groundedAgainst": self.sources,
+            "checked": self.checked,
+            "repaired": self.repaired,
+            "dropped": self.dropped,
+            "droppedItems": self.dropped_items[:20],
+        }
+
+
+def ground_quote_obj(grounder, obj, key="text"):
+    """Ground obj[key] in place; returns False if the quote must be dropped."""
+    g = grounder.ground(obj.get("name") or obj.get("respondent"), obj.get(key, ""))
+    if g is None:
+        return False
+    obj[key] = g
+    if key != "text" and "text" in obj:
+        obj["text"] = g
+    return True
+
+
 def whole(x):
     try:
         return int(round(float(x)))
@@ -130,7 +384,53 @@ def whole(x):
 
 
 # ----------------------------------------------------------------------------
+# data-first builders — real responses from the file, agent JSON for synthesis
+# ----------------------------------------------------------------------------
+
+def _agent_question_lut(*question_lists):
+    lut = {}
+    for qs in question_lists:
+        for q in as_list(qs):
+            if isinstance(q, dict):
+                key = _norm_text(first(q, "text", "question", default=""))[:40]
+                if key and key not in lut:
+                    lut[key] = q
+    return lut
+
+
+def build_question_breakdown_from_data(extracted, quant):
+    """questionBreakdown with responses/stats from the raw file; only the
+    interpretive fields (commentary, flags, benchmark) come from the agent."""
+    lut = _agent_question_lut(quant.get("ratingQuestions"), quant.get("choiceQuestions"))
+    out = []
+    for q in extracted["questions"]:
+        a = lut.get(_norm_text(q["text"])[:40], {})
+        entry = dict(q)
+        entry["benchmark"] = first(a, "benchmark", default="")
+        entry["flags"] = as_list(a.get("flags"))
+        insight = first(a, "commentary", "insight", "headline", default="")
+        entry["insight"] = insight
+        entry["commentary"] = insight
+        out.append(entry)
+    return out
+
+
+def build_free_text_from_data(extracted, qual):
+    """freeTextQuestions with every response verbatim from the raw file; the
+    agent only influences which responses are curated as 'most insightful'."""
+    surfaced = _surfaced_quote_keys(qual)
+    out = []
+    for q in extracted["freeText"]:
+        entry = dict(q)
+        entry["curated"] = _curate(q["responses"], surfaced)
+        entry["individualResponses"] = q["responses"]
+        out.append(entry)
+    return out
+
+
+# ----------------------------------------------------------------------------
 # questionBreakdown — ratings + choice questions
+# (LEGACY fallback: used only when no raw survey file is available)
 # ----------------------------------------------------------------------------
 
 def build_question_breakdown(quant):
@@ -260,7 +560,7 @@ def _curate(responses, surfaced, want=6, cap=8):
     return curated[:cap]
 
 
-def build_free_text(qual):
+def build_free_text(qual, grounder=None):
     out = []
     surfaced = _surfaced_quote_keys(qual)
     questions = first(qual, "questions", "freeTextQuestions", default=[])
@@ -274,6 +574,10 @@ def build_free_text(qual):
             txt = str(first(r, "text", "value", "response", default="") or "").strip()
             if not txt:
                 continue
+            if grounder is not None:
+                txt = grounder.ground(nm, txt)
+                if txt is None:
+                    continue
             responses.append({"respondent": nm or "—", "text": txt})
         curated = _curate(responses, surfaced)
         out.append({
@@ -680,6 +984,9 @@ def main():
     ap.add_argument("--rule-url", default=None)
     ap.add_argument("--focus", default=None)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--data", default=None,
+                    help="raw survey CSV(s) to verify quotes against "
+                         "(default: *.csv next to the analysis dir)")
     ap.add_argument("--no-photos", action="store_true",
                     help="skip SSW.People profile-photo resolution (offline/local runs)")
     args = ap.parse_args()
@@ -699,12 +1006,37 @@ def main():
     survey_name = args.survey_name or topic
     survey_label = survey_name
 
-    question_breakdown = build_question_breakdown(quant)
-    free_text = build_free_text(qual)
+    # Source of truth: the raw survey file. Bulk data (individual responses,
+    # tallies, means, people) is extracted from it in code — no LLM in the loop.
+    parent = os.path.dirname(os.path.abspath(d))
+    data_paths = [args.data] if args.data else sorted(
+        glob.glob(os.path.join(parent, "*.csv")) + glob.glob(os.path.join(parent, "*.xlsx")))
+    grounder = QuoteGrounder(data_paths) if data_paths else None
+    extracted = extract_survey(grounder.rows) if grounder else None
+
+    if extracted and (extracted["questions"] or extracted["freeText"]):
+        question_breakdown = build_question_breakdown_from_data(extracted, quant)
+        free_text = build_free_text_from_data(extracted, qual)
+    else:
+        sys.stderr.write(
+            "[build-consolidated] WARNING: no raw survey file (*.csv/*.xlsx) found next to "
+            "the analysis dir — falling back to UNVERIFIED agent-emitted bulk data. "
+            "Fix the data path; do not ship this.\n")
+        question_breakdown = build_question_breakdown(quant)
+        free_text = build_free_text(qual, grounder)
     themes = build_themes(qual, free_text)
     theme_lut = {t["id"]: t["name"] for t in themes}
     notable = build_notable_quotes(qual, theme_lut)
     standouts = build_standouts(qual)
+    if grounder is not None:
+        for t in themes:
+            t["allQuotes"] = [q for q in t["allQuotes"] if ground_quote_obj(grounder, q)]
+            rep = t.get("representativeQuote") or {}
+            if rep.get("text") and not ground_quote_obj(grounder, rep):
+                t["representativeQuote"] = (t["allQuotes"][0] if t["allQuotes"]
+                                            else {"text": "", "respondent": "", "name": "", "question": ""})
+        notable = [q for q in notable if ground_quote_obj(grounder, q)]
+        standouts = [s for s in standouts if ground_quote_obj(grounder, s, key="response")]
     people = build_people(question_breakdown, free_text, survey_label)
 
     # Resolve each respondent's name to an SSW.People profile photo (best-effort;
@@ -741,7 +1073,10 @@ def main():
 
     overview = build_overview(quant, qual, sentiment, rf, question_breakdown)
 
-    response_count = whole(first(qmeta, "totalResponses", "responseCount", default=None))
+    if extracted:
+        response_count = len({n for n in extracted["respondents"] if n}) or len(grounder.rows)
+    else:
+        response_count = whole(first(qmeta, "totalResponses", "responseCount", default=None))
     if not response_count:
         names = {r["respondent"] for q in question_breakdown for r in q.get("individualResponses", [])}
         names |= {p["name"] for p in people["respondents"]}
@@ -783,23 +1118,27 @@ def main():
     consolidated["adoptionGaps"] = build_adoption_gaps(rf)
     consolidated["recommendations"] = build_recommendations(rf, sentiment)
     consolidated["hardTruths"] = build_hard_truths(rf, sentiment)
-    consolidated["excludedQuestions"] = as_list(quant.get("excludedQuestions"))
+    excluded_questions = extracted["excluded"] if extracted else as_list(quant.get("excludedQuestions"))
+    consolidated["excludedQuestions"] = excluded_questions
     consolidated["crossSurveySynthesis"] = None
     consolidated["questionCoverageReport"] = {
         "numericQuestions": sum(1 for q in question_breakdown if q.get("kind") == "rating"),
         "choiceQuestions": sum(1 for q in question_breakdown if q.get("kind") != "rating"),
         "freeTextQuestions": len(free_text),
-        "excludedQuestions": len(as_list(quant.get("excludedQuestions"))),
+        "excludedQuestions": len(excluded_questions),
         "peopleProfiles": len(people["respondents"]),
     }
     consolidated["consolidationNotes"] = {
         "assembledBy": "build-consolidated.py (deterministic)",
+        "bulkDataSource": ("raw survey file: " + ", ".join(grounder.sources)) if extracted
+                          else "agent JSON (UNVERIFIED — no raw survey file found)",
         "dataHandlingActions": [
             "Excluded email addresses (never carried from agent outputs)",
             "Demoted logistics questions",
             f"Assembled {len(people['respondents'])} people profiles",
         ],
         "qualityScore": 90,
+        "quoteVerification": grounder.summary() if grounder else {"status": "SKIPPED — no raw survey file found"},
     }
 
     out_path = args.out or os.path.join(d, "consolidated.json")
@@ -807,6 +1146,14 @@ def main():
         json.dump(consolidated, f, indent=2, ensure_ascii=False)
 
     print(f"[build-consolidated] wrote {out_path}")
+    if extracted:
+        print(f"  bulk data: extracted from {', '.join(grounder.sources)} "
+              f"({response_count} respondents) — no LLM in the data path")
+    else:
+        print("  bulk data: LEGACY agent JSON (no raw survey file found) — UNVERIFIED")
+    if grounder:
+        print(f"  quote verification: {grounder.checked} checked, "
+              f"{grounder.repaired} repaired to source text, {grounder.dropped} dropped")
     print(f"  questions: {len(question_breakdown)} structured, {len(free_text)} free-text")
     print(f"  themes: {len(themes)}  people: {len(people['respondents'])}  "
           f"signals: {len(consolidated['redFlags'])}  responses: {response_count}")

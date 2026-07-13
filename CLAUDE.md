@@ -118,6 +118,16 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 
 ## Data Handling Rules
 
+### Data-first extraction (NO LLM in the data path)
+- **All bulk data on the dashboard comes straight from the raw survey file (CSV or XLSX), extracted in code by `build-consolidated.py`** (`load_rows` + `extract_survey`): individual responses, choice tallies, rating means/distributions, skip rates, people profiles, response counts. The analysis agents contribute **synthesis only** (themes, quotes, commentary, signals) — their `individualResponses`/numbers are never used for these surfaces.
+- The raw file must sit next to the `analysis/` dir (`surveys/{name}/{date}/*.csv` or `*.xlsx`). If it's missing, the script falls back to agent JSON with a LOUD "UNVERIFIED" warning — fix the data path, never ship that.
+- `consolidationNotes.bulkDataSource` records which file the run bound to.
+
+### Quote verification (anti-hallucination gate)
+- Quotes the agents surface (theme `allQuotes`, notable quotes, standouts) are still LLM-selected text, so `build-consolidated.py` verifies **each one against the respondent's own cells in the raw file**. Verbatim text passes; near-matches (fixed typo, trimmed) are **repaired back to the real cell text**; anything unverifiable is **dropped** and reported on stderr + in `consolidationNotes.quoteVerification` (`checked`/`repaired`/`dropped`/`droppedItems`).
+- Together these are the single chokepoint: the dashboard, result email, and recap video all render from `consolidated.json`, so nothing attributed to a person can say something they didn't write.
+- If a run reports many drops, an analysis agent invented or rewrote quotes — check `droppedItems` and consider re-running the qualitative agent.
+
 ### Attribution
 - These surveys are **compulsory** — 100% response rate, no self-selection bias
 - Survey responses are **attributed by name** — respondents are identified on their quotes and notable answers
@@ -218,7 +228,7 @@ Order (top to bottom): recap video → **Key Metrics** → Executive Summary →
 
 - **Key Metrics** — Four DS stat cards. **Led by the opinion/adoption signal — NOT the video/rule content ratings** (see "De-emphasise the video & rule ratings" below). Built by `build_key_metrics`: top pick, adoption frontier, task value, + one more opinion signal.
 - **Executive Summary** — Max 5 factual bullet points. Each bullet is one short sentence. No commentary or analysis.
-- **Hard Truths** — Sits **high in the Overview** (right after the Executive Summary) — it's the punchy, act-on-this synthesis and deserves prominence. **MAX 2 items, each max 2 sentences.** Punchy and direct. ONLY high-level synthesis that genuinely doesn't fit in Insights, Themes, or People. Keep the name "Hard Truths".
+- **Hard Truths** — Sits **high in the Overview** (right after the Executive Summary) — it's the punchy, act-on-this synthesis and deserves prominence. **0-2 items, each max 2 sentences — and OMIT the section entirely when nothing qualifies.** Many weekly topics land cleanly and have no hard truth; never manufacture one to fill the box (that's the same failure as inventing quotes — the structure demanding content the data doesn't contain). The renderer hides the section when `hardTruths` is empty. When one IS real, keep it punchy and direct; ONLY high-level synthesis that genuinely doesn't fit in Insights, Themes, or People. Keep the name "Hard Truths".
 - **Overall Verdict** — Grade (A-F) with one-sentence summary. Dark gradient banner style.
 - **Focus Area Summary** (if focus prompt provided) — Dedicated card summarizing focus-area findings from all agents.
 - **Standout Responses** — Notable individual answers worth highlighting. Each card shows respondent name, question answered, blockquote response, and a badge explaining why it stands out. Uses `.standout-card` styling with `.standout-badge` for the reason.
@@ -303,7 +313,7 @@ surveys/{survey-name}/
 
 ## Consolidation (run the assembler script)
 
-**Consolidation is done by a deterministic script — `templates/build-consolidated.py` — NOT by the consolidator agent hand-writing `consolidated.json`.** The bulky parts of that file (every question's `individualResponses`, every person's profile, every theme's `allQuotes`) are pure data pivots from the four agent outputs; making the model emit thousands of lines of JSON is what blew the job time budget. The script stitches it together in milliseconds with the exact field names the dashboard + slides bind to.
+**Consolidation is done by a deterministic script — `templates/build-consolidated.py` — NOT by the consolidator agent hand-writing `consolidated.json`.** The bulky parts of that file (every question's `individualResponses`, every person's profile, tallies, means) are **extracted directly from the raw survey file (CSV/XLSX) in code** — see "Data-first extraction" above; agent JSON supplies only the synthesis fields, and agent-surfaced quotes are verified against the raw file. The script stitches it together in milliseconds with the exact field names the dashboard + slides bind to.
 
 Run it after the four analysis agents have written their JSON:
 

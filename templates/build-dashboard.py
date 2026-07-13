@@ -198,12 +198,20 @@ def render_recap_video(out_html_path, video_name="walkthrough.mp4"):
 
 
 def render_hard_truths(truths):
+    # No hard truths -> no section. A box announcing it has nothing to say is
+    # worse than absence, and forcing the section invites manufactured drama.
     if not truths:
-        return '<p class="text-ssw-gray-400">No hard truths surfaced — the topic landed cleanly.</p>'
-    return "".join(
+        return ""
+    items = "".join(
         '<div class="flex items-start">'
         f'<p class="text-ssw-charcoal">{esc(t)}</p></div>'
         for t in truths
+    )
+    return (
+        '<section class="mb-6 bg-ssw-red-50 border-l-4 border-ssw-red rounded-r-ds p-6">'
+        '<h2 class="text-lg text-ssw-red-700 mb-4 flex items-center font-bold">Hard Truths</h2>'
+        f'<div class="space-y-2 text-ssw-charcoal">{items}</div>'
+        '</section>'
     )
 
 
@@ -779,7 +787,7 @@ def main():
         "{{RECAP_VIDEO}}": render_recap_video(out_path),
         "{{FOCUS_SUMMARY}}": render_focus_summary(c.get("focusSummary")),
         "{{STANDOUT_RESPONSES}}": render_standouts(c.get("standoutResponses")),
-        "{{HARD_TRUTHS}}": render_hard_truths(c.get("hardTruths")),
+        "{{HARD_TRUTHS_SECTION}}": render_hard_truths(c.get("hardTruths")),
         "{{QUESTION_BREAKDOWN}}": render_question_breakdown(c),
         "{{SENTIMENT_OVERVIEW}}": render_sentiment_overview(c.get("sentimentOverview")),
         "{{THEME_CARDS}}": render_theme_cards(c.get("themes")),

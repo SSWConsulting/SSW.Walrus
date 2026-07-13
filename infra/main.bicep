@@ -107,16 +107,10 @@ module containerRegistry 'modules/containerRegistry.bicep' = {
   }
 }
 
-// 5. Monitoring (Log Analytics + App Insights)
-module monitoring 'modules/monitoring.bicep' = {
-  name: 'provision-monitoring-${suffix}'
-  params: {
-    project: project
-    environment: environment
-    location: location
-    costCategoryTag: costCategoryTag
-  }
-}
+// (Monitoring removed: Log Analytics ingested the job's entire console output
+// at ~$4.30/GB — one dev-loop week cost $193 and tripped the subscription's
+// spending cap. The job's real output lands in blob storage; live debugging
+// works via `az containerapp job logs show --follow` with no workspace.)
 
 // 6. Container App Environment + Job
 module containerApp 'modules/containerApp.bicep' = {
@@ -125,8 +119,6 @@ module containerApp 'modules/containerApp.bicep' = {
     project: project
     environment: environment
     location: location
-    logAnalyticsCustomerId: monitoring.outputs.logAnalyticsCustomerId
-    logAnalyticsSharedKey: monitoring.outputs.logAnalyticsSharedKey
     managedIdentityId: managedIdentity.outputs.id
     managedIdentityClientId: managedIdentity.outputs.clientId
     managedIdentityPrincipalId: managedIdentity.outputs.principalId
@@ -157,7 +149,6 @@ module functionApp 'modules/functionApp.bicep' = {
     managedIdentityClientId: managedIdentity.outputs.clientId
     keyVaultUrl: keyVault.outputs.keyVaultUrl
     storageConnectionString: storage.outputs.connectionString
-    appInsightsConnectionString: monitoring.outputs.appInsightsConnectionString
     containerAppJobName: containerApp.outputs.jobName
     costCategoryTag: costCategoryTag
   }

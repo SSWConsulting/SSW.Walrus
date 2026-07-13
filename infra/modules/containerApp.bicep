@@ -7,13 +7,6 @@ param environment string
 @description('Azure region')
 param location string
 
-@description('Log Analytics workspace customer ID')
-param logAnalyticsCustomerId string
-
-@description('Log Analytics workspace shared key')
-@secure()
-param logAnalyticsSharedKey string
-
 @description('User-assigned managed identity ID')
 param managedIdentityId string
 
@@ -61,12 +54,12 @@ resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2023-11-02-p
   name: environmentName
   location: location
   properties: {
+    // No log destination on purpose: shipping the job's console output to Log
+    // Analytics cost ~$30/day during dev (Claude Code streams its whole
+    // transcript to stdout). Use `az containerapp job logs show --follow`
+    // for live debugging; results/artifacts land in blob storage.
     appLogsConfiguration: {
-      destination: 'log-analytics'
-      logAnalyticsConfiguration: {
-        customerId: logAnalyticsCustomerId
-        sharedKey: logAnalyticsSharedKey
-      }
+      destination: null
     }
   }
   tags: costCategoryTag

@@ -57,8 +57,6 @@ Monday 8am AEST
 | Key Vault | `kv-walrus-{env}` | Secrets storage (RBAC-enabled) |
 | Storage Account | `sawalrus{env}` | Queues (`survey-processing`, `survey-done`) + Blobs (`survey-inbox`, `survey-results`) |
 | Dashboard Storage | `sawalrus{env}web` | Static website (`$web`) hosting for dashboards |
-| Log Analytics | `log-walrus-{env}` | Centralized logging |
-| App Insights | `ai-walrus-{env}` | Application monitoring |
 | Container App Env | `ce-walrus-{env}` | Container runtime environment |
 | Container App Job | `job-walrus-{env}` | Claude Code processor |
 | Function App | `func-walrus-{env}` | Queue trigger → starts the Container App Job |

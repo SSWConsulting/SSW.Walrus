@@ -156,7 +156,7 @@ pushes to `main`.
 | `DASHBOARD_STORAGE_ACCOUNT` | Bicep | Static website storage account for dashboards |
 | `DASHBOARD_BASE_URL` | Bicep | Static website host used to build the public dashboard URL |
 | `KEY_VAULT_URL` | Bicep | Key Vault URL (for the Claude OAuth token) |
-| `CLAUDE_MODEL` | Bicep | Claude model (default: claude-sonnet-4-6) |
+| `CLAUDE_MODEL` | Bicep | Claude model (default: claude-opus-4-8) |
 | `AZURE_CLIENT_ID` | Bicep | Managed identity client ID |
 
 ### Function App

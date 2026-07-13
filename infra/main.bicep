@@ -26,7 +26,7 @@ param location string = 'australiaeast'
 param imageTag string = 'latest'
 
 @description('Claude model to use')
-param claudeModel string = 'claude-sonnet-4-6'
+param claudeModel string = 'claude-opus-4-8'
 
 @description('ElevenLabs voice ID for the recap walkthrough (record-walkthrough skill)')
 param walkthroughVoiceId string = 'x9d3o60RLzlwegAit1SJ'

@@ -69,7 +69,7 @@ async function main() {
 
     // 2. Run Claude Code: analysis + consolidation + dashboard (phase 1)
     console.log('[processor] Running Claude Code /process-survey...');
-    const model = CLAUDE_MODEL || 'claude-sonnet-4-6';
+    const model = CLAUDE_MODEL || 'claude-opus-4-8';
     let dashboardUrl = null;
     try {
       // Cap phase 1 below the Container App Job replicaTimeout so that if it

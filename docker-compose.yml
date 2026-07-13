@@ -5,7 +5,7 @@ services:
     build: .
     environment:
       - SURVEY_FILE=${SURVEY_FILE:-}
-      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-sonnet-4-6}
+      - CLAUDE_MODEL=${CLAUDE_MODEL:-claude-opus-4-8}
       # Azure mode (set by the Container App Job; optional locally)
       - INBOX_BLOB=${INBOX_BLOB:-}
       - SURVEY_NAME=${SURVEY_NAME:-}

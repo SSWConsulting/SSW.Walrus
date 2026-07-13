@@ -111,7 +111,8 @@ When multiple files are provided, each file is treated as a separate survey "sec
 ### Step 2: Run Analysis Agents (IN PARALLEL)
 
 Pass each agent:
-- The full survey data (or a structured summary for efficiency)
+- The **path to the raw survey file(s)** — each agent MUST read the FULL file itself (every row, every response). NEVER pass a summary, excerpt, or paraphrase of the data instead of the file: agents fed a summary have been observed to fabricate plausible per-person responses (95% of quotes on one deployed dashboard were invented). If the file is XLSX, note that `build-consolidated.py`'s `load_rows` reads XLSX directly and agents can dump it with `python3 -c "import openpyxl; ..."` — do not retype the contents for them.
+- Note: agents do NOT need to emit exhaustive `individualResponses` arrays — `build-consolidated.py` extracts all bulk data (responses, tallies, means, people) directly from the raw file in code. Agent JSON is used for **analysis only** (themes, quotes, commentary, signals), and every quote they emit is verified against the raw file.
 - Column classifications from Step 1
 - The focus prompt (if provided)
 - **For multi-survey:** The survey label mapping (which questions belong to which survey)

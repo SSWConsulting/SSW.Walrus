@@ -22,6 +22,8 @@ This is NOT an employee-engagement survey. Do not produce health scores, grades,
 
 ## Your task
 
+**Read the FULL raw data file first — every row.** Note: `build-consolidated.py` now extracts the bulk data (individual responses, tallies, means, distributions) directly from the raw file in code, so your `individualResponses` arrays and computed numbers are used as cross-checks and for your own analysis — the dashboard's hard numbers come from the file, not from you. NEVER estimate, round, or invent a number or response: compute from the actual rows (use `python3` if the file is large), and copy responses character-for-character.
+
 0. **Capture the week's context from the question headers** — the **video** the team was asked to watch (its title + URL, usually embedded in the "Watch this video…and give it a rating" header) and the **rule** title + URL (from the "Read the rule…" header). Put these in `metadata.videoWatched` and `metadata.ruleTitle`/`ruleUrl` — they're the "this week we watched X / the rule was Y" context the digest and walkthrough lean on.
 1. **Classify every column** into one of the types above.
 2. For each **content rating (1-5)**: mean (1 decimal), distribution (count at each point), skip rate, individual responses, and a 1-2 sentence commentary on the topic reception (NOT morale).

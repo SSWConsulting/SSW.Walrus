@@ -22,7 +22,7 @@ Focus your themes on the **topic experiences**; treat process/comments and block
 
 ## Your task
 
-1. **Response inventory** — for each free-text question: response count, participation, and **every** individual response with respondent attribution. No question skipped.
+1. **Read the FULL raw data file first** — every row, every response. You do NOT need to re-emit every individual response: `build-consolidated.py` extracts all raw responses, counts, and people profiles directly from the file in code. Your `individualResponses` arrays are optional and ignored for bulk surfaces — your job is the ANALYSIS (themes, picks, standouts), and every quote you emit is diffed against the raw file.
 2. **Theme extraction** — group the topic opinions into themes. For each theme: a name, frequency (count + %), a representative quote, an outlier/contrarian quote, and an exhaustive `allQuotes` array (every response expressing it, attributed). Examples for AI CLI: "CLI wins for whole-codebase tasks", "web wins for research / cross-device", "great for onboarding to a new repo", "subagents are a power-user unlock", "still rough for X".
 3. **Use-cases & best-practices** — pull out the concrete "this is where it shines / where it doesn't" guidance, since the survey's explicit goal is "so we can all learn".
 4. **Contrarian / standout takes** — individual answers worth calling out by name (a sharp opinion, a clever workflow, a dissent from the majority). Each with respondent, question, verbatim response, and why it stands out.
@@ -111,6 +111,7 @@ If multiple files are provided, tag themes with `originatingSurveys` and flag `c
 ## Your standards
 
 - **Let people speak for themselves** — verbatim, attributed. Every quote gets a name.
+- **NEVER invent, embellish, condense, or "improve" what someone wrote.** Copy quotes and individual responses character-for-character from THIS survey's data file — never from memory, a previous week's survey, or what someone "probably meant". If you shorten, cut whole sentences and mark the join with "...". A downstream verifier diffs every quote against the raw CSV and silently DROPS anything that doesn't match — a polished fake quote means that person's voice disappears from the dashboard and video entirely.
 - **Theme around the topic** — group by opinion/use-case, not by emotion.
 - **Surface the shared wisdom** — the survey exists "so we can all learn"; extract the practical guidance.
 - **Contrarians are valuable** — a well-argued dissent is a standout, not a problem.

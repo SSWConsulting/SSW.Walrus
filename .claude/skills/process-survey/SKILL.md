@@ -9,6 +9,21 @@ user-invocable: true
 
 Convert a CSV or XLSX survey data export (e.g., from Microsoft Forms) into a comprehensive, deployed HTML dashboard using multiple specialized analyzers.
 
+## Script root
+
+The helper scripts (`templates/`, `upload-dashboard.js`) live at the repo/plugin root, three levels above this skill. Resolve it once and use it in every command below:
+
+```bash
+WALRUS_ROOT="${CLAUDE_SKILL_DIR:+$(cd "$CLAUDE_SKILL_DIR/../../.." && pwd)}"
+[ -d "${WALRUS_ROOT:-/nonexistent}/templates" ] || WALRUS_ROOT="$PWD"   # repo clone
+[ -d "$WALRUS_ROOT/templates" ] || WALRUS_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/ssw-walrus"
+[ -d "$WALRUS_ROOT/templates" ] || git clone --depth 1 https://github.com/SSWConsulting/SSW.Walrus "$WALRUS_ROOT"
+```
+
+Covers every install mode: Claude plugin (whole repo ships), a clone of this repo, and agent-agnostic skill installs (skills.sh copies only this folder — the scripts are fetched once into a cache clone). Outputs (`surveys/…`) always go in the **current working directory**, never the script root.
+
+**No subagent tool?** This skill normally fans the analysis out to 4 named agents (Step 2). On a platform without subagents, do the four analyses yourself, sequentially, writing the same four JSON files with the same schemas — the agent prompts are in `$WALRUS_ROOT/.claude/agents/*.md`.
+
 ## Invocation
 
 ```
@@ -146,7 +161,7 @@ Pass each agent:
 Consolidation is a **deterministic script**, not the consolidator agent hand-writing JSON. The bulky arrays (every question's `individualResponses`, every person's profile, every theme's `allQuotes`) are pure data pivots — making the model emit thousands of lines of JSON is slow and once blew the job's time budget. Run:
 
 ```bash
-python3 templates/build-consolidated.py \
+python3 "$WALRUS_ROOT/templates/build-consolidated.py" \
   surveys/{survey-name}/{date}/analysis \
   --survey-name "{topic}" --topic "{topic}" \
   --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" [--focus "{focus}"]
@@ -166,9 +181,9 @@ The dashboard is **rendered by a script**, NOT by you generating HTML. A 79-resp
 
 ```bash
 mkdir -p surveys/{survey-name}/{date}/dashboard
-python3 templates/build-dashboard.py \
+python3 "$WALRUS_ROOT/templates/build-dashboard.py" \
   surveys/{survey-name}/{date}/analysis/consolidated.json \
-  templates/survey-dashboard.html \
+  "$WALRUS_ROOT/templates/survey-dashboard.html" \
   surveys/{survey-name}/{date}/dashboard/index.html
 ```
 
@@ -179,7 +194,7 @@ Output: `surveys/{survey-name}/{date}/dashboard/index.html`
 ### Step 5: Deploy to Azure Blob static website
 
 ```bash
-node upload-dashboard.js --survey {survey-name} --dir surveys/{survey-name}/{date}/dashboard
+node "$WALRUS_ROOT/upload-dashboard.js" --survey {survey-name} --dir surveys/{survey-name}/{date}/dashboard
 ```
 
 - Uploads the dashboard (incl. the recap `walkthrough.mp4` + poster when present) to the `$web` container of the dashboard storage account using the container's managed identity (no credentials needed).

@@ -1,0 +1,19 @@
+{
+  "name": "walrus",
+  "displayName": "SSW Walrus",
+  "version": "1.0.0",
+  "description": "Digest a CSV/XLSX survey export (e.g. Microsoft Forms) into a multi-tab HTML dashboard with attributed insights, plus an optional narrated recap video.",
+  "author": { "name": "SSW" },
+  "homepage": "https://github.com/SSWConsulting/SSW.Walrus",
+  "repository": "https://github.com/SSWConsulting/SSW.Walrus",
+  "license": "MIT",
+  "keywords": ["survey", "analysis", "dashboard", "microsoft-forms"],
+  "skills": "./.claude/skills/",
+  "agents": [
+    "./.claude/agents/quantitative-analyzer.md",
+    "./.claude/agents/qualitative-analyzer.md",
+    "./.claude/agents/sentiment-analyzer.md",
+    "./.claude/agents/red-flag-detector.md",
+    "./.claude/agents/consolidator.md"
+  ]
+}

@@ -14,6 +14,56 @@ see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
 end to end (analysis → dashboard → recap → email), including the SSW branding and the
 SSW.People profile-photo resolution used on the People tab and in the video.
 
+## Install the skills
+
+You don't need any of the Azure pipeline to use Walrus — the analysis + dashboard
+run entirely locally.
+
+**Claude Code (plugin):**
+
+```
+/plugin marketplace add SSWConsulting/SSW.Walrus
+/plugin install walrus@ssw-walrus
+```
+
+**Any other agent (Cursor, Codex, OpenCode, … via [skills.sh](https://www.skills.sh/)):**
+
+```
+npx skills add SSWConsulting/SSW.Walrus
+```
+
+This installs the same skills into whatever agents it detects. On first run the
+skills fetch their helper scripts into `~/.cache/ssw-walrus` (they ship with the
+skill folder only); platforms without Claude-style subagents run the four
+analyses sequentially instead of in parallel.
+
+Then, in any project, generate a full report from a survey export in one command:
+
+```
+/walrus:generate-report path/to/survey.xlsx
+/walrus:generate-report culture.csv worklife.csv focus on burnout
+```
+
+That runs the whole thing — four analysis agents in parallel, deterministic
+consolidation (bulk data extracted from the raw file, quotes verified against it),
+the multi-tab HTML dashboard, and a narrated recap video — and writes everything
+to `surveys/<name>/<date>/` in your current directory. The two stages are also
+installed individually: `/walrus:process-survey` (analysis → dashboard) and
+`/walrus:record-walkthrough` (recap video), plus `/walrus:list-surveys`.
+
+**Requirements:**
+
+| Needed for | Requirement |
+|---|---|
+| Everything | `python3` |
+| XLSX input | `pip install openpyxl` (CSV needs nothing) |
+| Recap video (optional) | `ffmpeg`, `npm install` + `npx playwright install chromium` in the plugin dir |
+| Narrated voice (optional) | `ELEVENLABS_API_KEY` env var — absent ⇒ captioned silent video |
+| Azure deploy (optional) | `DASHBOARD_STORAGE_ACCOUNT` + `DASHBOARD_BASE_URL` env vars — absent ⇒ the dashboard is reported as a local `index.html` path |
+
+Cloning this repo works too — the same skills are picked up from `.claude/skills/`
+when you run Claude Code inside it.
+
 ## Architecture
 
 ```

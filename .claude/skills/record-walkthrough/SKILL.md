@@ -33,7 +33,19 @@ post-record self-check.
 
 The render engine is **`templates/walkthrough-recorder.mjs`**; the plan builder is
 **`templates/build-walkthrough-plan.py`**. This skill is the procedure — let the
-scripts do the work.
+scripts do the work. They live at the repo/plugin root — resolve it once:
+
+```bash
+WALRUS_ROOT="${CLAUDE_SKILL_DIR:+$(cd "$CLAUDE_SKILL_DIR/../../.." && pwd)}"
+[ -d "${WALRUS_ROOT:-/nonexistent}/templates" ] || WALRUS_ROOT="$PWD"   # repo clone
+[ -d "$WALRUS_ROOT/templates" ] || WALRUS_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/ssw-walrus"
+[ -d "$WALRUS_ROOT/templates" ] || git clone --depth 1 https://github.com/SSWConsulting/SSW.Walrus "$WALRUS_ROOT"
+```
+
+Covers a Claude plugin install, a repo clone, and agent-agnostic skill installs
+(skills.sh copies only this folder — the scripts are fetched once into a cache
+clone). The recorder needs node deps (`playwright`) resolvable from
+`$WALRUS_ROOT` — `npm install` there if missing.
 
 ## 0. Preflight
 
@@ -66,7 +78,7 @@ topic card just omits the thumbnail.
 Generate the content-card deck from the digest:
 
 ```bash
-python3 templates/build-walkthrough-plan.py \
+python3 "$WALRUS_ROOT/templates/build-walkthrough-plan.py" \
   surveys/<survey>/<date>/analysis/consolidated.json \
   --out surveys/<survey>/<date>/walkthrough/plan.json
 ```
@@ -129,12 +141,12 @@ Keep the plan OUT of `dashboard/` so it isn't published.
 
 ```bash
 # voice (key in env — provided by Key Vault in the pipeline):
-node templates/walkthrough-recorder.mjs \
+node "$WALRUS_ROOT/templates/walkthrough-recorder.mjs" \
   --plan surveys/<survey>/<date>/walkthrough-plan.json \
   --out  surveys/<survey>/<date>/dashboard/walkthrough.mp4
 
 # no key ⇒ silent captioned render (still valid):
-node templates/walkthrough-recorder.mjs --plan …/walkthrough-plan.json --out …/dashboard/walkthrough.mp4
+node "$WALRUS_ROOT/templates/walkthrough-recorder.mjs" --plan …/walkthrough-plan.json --out …/dashboard/walkthrough.mp4
 ```
 
 - `.mp4` out ⇒ H.264/AAC; the recorder also writes `walkthrough-poster.jpg`.
@@ -152,11 +164,11 @@ built + deployed the dashboard. Now that `walkthrough.mp4` sits in the dashboard
 folder, re-render the dashboard (it auto-embeds the player) and re-deploy:
 
 ```bash
-python3 templates/build-dashboard.py \
+python3 "$WALRUS_ROOT/templates/build-dashboard.py" \
   surveys/<survey>/<date>/analysis/consolidated.json \
-  templates/survey-dashboard.html \
+  "$WALRUS_ROOT/templates/survey-dashboard.html" \
   surveys/<survey>/<date>/dashboard/index.html
-node upload-dashboard.js --survey <survey> --dir surveys/<survey>/<date>/dashboard
+node "$WALRUS_ROOT/upload-dashboard.js" --survey <survey> --dir surveys/<survey>/<date>/dashboard
 ```
 
 `upload-dashboard.js` publishes `index.html` + `walkthrough.mp4` +

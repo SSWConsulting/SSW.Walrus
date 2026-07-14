@@ -13,7 +13,7 @@ The four analysis-agent outputs for an SSW "Chewing the Fat" / Free Lunch survey
 
 1. **Run the assembler** (skip if `consolidated.json` already exists in the analysis dir):
    ```bash
-   python3 templates/build-consolidated.py <analysis-dir> \
+   python3 <repo-or-plugin-root>/templates/build-consolidated.py <analysis-dir> \
      --survey-name "<topic>" --topic "<topic>" --date "<DD/MM/YYYY>" --rule-url "<rule url>"
    ```
    It reads `quantitative.json` / `qualitative.json` / `sentiment.json` / `red-flags.json` and writes a complete `consolidated.json` with all the field names the dashboard binds to.

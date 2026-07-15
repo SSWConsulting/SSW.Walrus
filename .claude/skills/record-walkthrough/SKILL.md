@@ -140,7 +140,7 @@ dashboard folder so the dashboard can embed it and it ships in the same deploy.
 Keep the plan OUT of `dashboard/` so it isn't published.
 
 ```bash
-# voice (key in env — provided by Key Vault in the pipeline):
+# voice (key in env):
 node "$WALRUS_ROOT/templates/walkthrough-recorder.mjs" \
   --plan surveys/<survey>/<date>/walkthrough-plan.json \
   --out  surveys/<survey>/<date>/dashboard/walkthrough.mp4
@@ -172,9 +172,9 @@ node "$WALRUS_ROOT/upload-dashboard.js" --survey <survey> --dir surveys/<survey>
 ```
 
 `upload-dashboard.js` publishes `index.html` + `walkthrough.mp4` +
-`walkthrough-poster.jpg` to the same per-survey surge.sh domain (or Azure `$web`
-prefix on the legacy pipeline) — so the recap plays from the **same dashboard
-URL already in the result email**. No email or Power Automate change. Report the URL, duration, narration mode, and any degrade.
+`walkthrough-poster.jpg` to the same per-survey surge.sh domain — so the recap
+plays from the **same dashboard URL already shared with the team**. Report the
+URL, duration, narration mode, and any degrade.
 
 **This whole skill is best-effort in the pipeline** — if recording fails (no
 Chromium/ffmpeg, TTS error), the dashboard from `process-survey` is already live;

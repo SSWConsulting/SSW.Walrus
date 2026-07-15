@@ -78,7 +78,7 @@ const note = (m) => { if (!degraded.includes(m)) degraded.push(m); console.error
 const PROVIDER = (process.env.LOGBOOK_TTS_PROVIDER || 'elevenlabs').toLowerCase().trim();
 const KEYVAR = { elevenlabs: 'ELEVENLABS_API_KEY', openai: 'OPENAI_API_KEY' }[PROVIDER] || `${PROVIDER.toUpperCase()}_API_KEY`;
 const TTS_KEY = process.env[KEYVAR] || null;
-const VOICE = process.env.LOGBOOK_VOICE || '21m00Tcm4TlvDq8ikWAM'; // ElevenLabs "Rachel" default
+const VOICE = process.env.LOGBOOK_VOICE || 'sai9UY7iXkRDSsXHR0bZ'; // default voice, used only when LOGBOOK_VOICE is unset
 const MODEL = process.env.LOGBOOK_TTS_MODEL || 'eleven_multilingual_v2';
 
 const clipHash = (text) => createHash('sha256').update(`${PROVIDER} ${VOICE} ${text}`).digest('hex').slice(0, 16);

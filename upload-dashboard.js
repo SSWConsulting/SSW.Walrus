@@ -1,26 +1,24 @@
 #!/usr/bin/env node
 
 /**
- * upload-dashboard.js — Deploy a survey dashboard to Azure Blob static website
+ * upload-dashboard.js — Deploy a survey dashboard to the public web
  *
- * Replaces the old surge.sh deploy. Uploads the dashboard directory to the
- * "$web" container of the dashboard storage account (under a per-survey prefix)
- * using the container's managed identity, then prints the DEPLOYED_URL line
- * that processor.js parses.
+ * Default: surge.sh — zero Azure dependency, works anywhere node runs.
+ * One-time setup: `npx surge login` (or set SURGE_LOGIN + SURGE_TOKEN).
+ * Each survey gets its own domain: https://ssw-walrus-<survey>.surge.sh
+ *
+ * Azure Blob static website is used ONLY when DASHBOARD_STORAGE_ACCOUNT is
+ * set (the legacy Container App Job pipeline). Prints the DEPLOYED_URL line
+ * that processor.js / the skills parse either way.
  *
  * Usage:
  *   node upload-dashboard.js --survey <name> --dir <dashboard-dir>
- *
- * Env (set on the Container App Job by Bicep):
- *   DASHBOARD_STORAGE_ACCOUNT  storage account name (e.g. sawalrusstagingweb)
- *   DASHBOARD_BASE_URL         static website host (e.g. sawalrusstagingweb.z8.web.core.windows.net)
- *   AZURE_CLIENT_ID            user-assigned managed identity client ID
  */
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { BlobServiceClient } = require('@azure/storage-blob');
-const { DefaultAzureCredential } = require('@azure/identity');
+const { spawnSync } = require('child_process');
 
 const CONTENT_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -64,15 +62,71 @@ async function main() {
     console.error('Usage: node upload-dashboard.js --survey <name> --dir <dashboard-dir>');
     process.exit(1);
   }
-
-  const account = process.env.DASHBOARD_STORAGE_ACCOUNT;
-  const baseUrl = process.env.DASHBOARD_BASE_URL;
-  if (!account) {
-    throw new Error('Missing DASHBOARD_STORAGE_ACCOUNT env var');
-  }
   if (!fs.existsSync(dir)) {
     throw new Error(`Dashboard directory not found: ${dir}`);
   }
+
+  const prefix = survey.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
+
+  if (process.env.DASHBOARD_STORAGE_ACCOUNT) {
+    await deployAzure(prefix, dir);
+  } else {
+    deploySurge(prefix, dir);
+  }
+}
+
+function surgeAuthenticated() {
+  if (process.env.SURGE_LOGIN && process.env.SURGE_TOKEN) return true;
+  const netrc = path.join(os.homedir(), '.netrc');
+  return fs.existsSync(netrc) && fs.readFileSync(netrc, 'utf8').includes('surge');
+}
+
+function deploySurge(prefix, dir) {
+  if (!surgeAuthenticated()) {
+    throw new Error(
+      'surge is not authenticated — run `npx surge login` once (free account), or set SURGE_LOGIN + SURGE_TOKEN'
+    );
+  }
+
+  // Stage to a temp dir: the publishable files + the SSW logo at the root
+  // (the result email references /ssw-logo.png by absolute URL — Outlook
+  // strips data URIs). .pptx never ships (defensive, see SKIP_EXTENSIONS).
+  const files = walk(dir);
+  if (files.length === 0) {
+    throw new Error(`No publishable files found in ${dir}`);
+  }
+
+  const staging = fs.mkdtempSync(path.join(os.tmpdir(), 'walrus-deploy-'));
+  for (const file of files) {
+    const rel = path.relative(dir, file);
+    const dest = path.join(staging, rel);
+    fs.mkdirSync(path.dirname(dest), { recursive: true });
+    fs.copyFileSync(file, dest);
+  }
+  const logoSrc = path.join(__dirname, 'templates', 'assets', 'ssw-logo.png');
+  if (fs.existsSync(logoSrc)) {
+    fs.copyFileSync(logoSrc, path.join(staging, 'ssw-logo.png'));
+  }
+
+  const domain = `ssw-walrus-${prefix}.surge.sh`;
+  const res = spawnSync('npx', ['--yes', 'surge', staging, domain], {
+    stdio: ['ignore', 'inherit', 'inherit'],
+    timeout: 10 * 60 * 1000,
+  });
+  fs.rmSync(staging, { recursive: true, force: true });
+  if (res.status !== 0) {
+    throw new Error(`surge deploy failed (exit ${res.status ?? 'timeout'})`);
+  }
+
+  // The line processor.js / the skills grep for. Own line, no decoration.
+  console.log(`DEPLOYED_URL=https://${domain}/`);
+}
+
+async function deployAzure(prefix, dir) {
+  const { BlobServiceClient } = require('@azure/storage-blob');
+  const { DefaultAzureCredential } = require('@azure/identity');
+  const account = process.env.DASHBOARD_STORAGE_ACCOUNT;
+  const baseUrl = process.env.DASHBOARD_BASE_URL;
 
   const credential = new DefaultAzureCredential({
     managedIdentityClientId: process.env.AZURE_CLIENT_ID,
@@ -87,8 +141,6 @@ async function main() {
   if (files.length === 0) {
     throw new Error(`No publishable files found in ${dir}`);
   }
-
-  const prefix = survey.replace(/[^a-zA-Z0-9-]/g, '-').toLowerCase();
 
   for (const file of files) {
     const rel = path.relative(dir, file).split(path.sep).join('/');

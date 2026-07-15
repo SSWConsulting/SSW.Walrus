@@ -152,8 +152,8 @@ node "$WALRUS_ROOT/templates/walkthrough-recorder.mjs" --plan …/walkthrough-pl
 - `.mp4` out ⇒ H.264/AAC; the recorder also writes `walkthrough-poster.jpg`.
 - TTS is **hash-cached** by `(provider, voice, text)`: editing one card's
   narration re-synthesises only that clip. `--fresh` wipes the cache.
-- `LOGBOOK_VOICE` is an ElevenLabs voice id; `LOGBOOK_VOICE_NAME` (optional)
-  asserts the name. Provider/key from env (`ELEVENLABS_API_KEY`).
+- `LOGBOOK_VOICE` is an ElevenLabs voice id (a default voice is used only when
+  it's unset). Provider/key from env (`ELEVENLABS_API_KEY`).
 - The recorder prints a JSON summary (out, poster, duration, narration mode,
   `selfCheck`, `degraded`). A failed self-check exits non-zero — don't ship it.
 
@@ -172,9 +172,9 @@ node "$WALRUS_ROOT/upload-dashboard.js" --survey <survey> --dir surveys/<survey>
 ```
 
 `upload-dashboard.js` publishes `index.html` + `walkthrough.mp4` +
-`walkthrough-poster.jpg` to `$web` under the same survey prefix — so the recap
-plays from the **same dashboard URL already in the result email**. No email or
-Power Automate change. Report the URL, duration, narration mode, and any degrade.
+`walkthrough-poster.jpg` to the same per-survey surge.sh domain (or Azure `$web`
+prefix on the legacy pipeline) — so the recap plays from the **same dashboard
+URL already in the result email**. No email or Power Automate change. Report the URL, duration, narration mode, and any degrade.
 
 **This whole skill is best-effort in the pipeline** — if recording fails (no
 Chromium/ffmpeg, TTS error), the dashboard from `process-survey` is already live;

@@ -17,7 +17,7 @@ Show all processed surveys and their analysis history.
    - Date range of analyses (earliest to latest)
    - Most recent analysis date
    - Whether a dashboard exists
-   - Whether it was deployed (check for the Azure Blob static website URL)
+   - Whether it was deployed (check for the surge.sh / static website URL)
 
 3. Display in a formatted overview
 

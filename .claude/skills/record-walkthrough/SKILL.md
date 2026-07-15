@@ -38,8 +38,9 @@ scripts do the work. They live at the repo/plugin root — resolve it once:
 ```bash
 WALRUS_ROOT="${CLAUDE_SKILL_DIR:+$(cd "$CLAUDE_SKILL_DIR/../../.." && pwd)}"
 [ -d "${WALRUS_ROOT:-/nonexistent}/templates" ] || WALRUS_ROOT="$PWD"   # repo clone
-[ -d "$WALRUS_ROOT/templates" ] || WALRUS_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/ssw-walrus"
-[ -d "$WALRUS_ROOT/templates" ] || git clone --depth 1 https://github.com/SSWConsulting/SSW.Walrus "$WALRUS_ROOT"
+[ -d "$WALRUS_ROOT/templates" ] || WALRUS_ROOT="$(ls -d "$HOME/.claude/plugins/cache/ssw-walrus/walrus/"*/ 2>/dev/null | sort -V | tail -1)"   # Claude plugin install
+[ -d "${WALRUS_ROOT:-/nonexistent}/templates" ] || WALRUS_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/ssw-walrus"
+[ -d "$WALRUS_ROOT/templates" ] || git clone --depth 1 https://github.com/SSWConsulting/SSW.Walrus "$WALRUS_ROOT"   # last resort: bare skill installs (skills.sh)
 ```
 
 Covers a Claude plugin install, a repo clone, and agent-agnostic skill installs

@@ -40,9 +40,6 @@ param dashboardBaseUrl string
 @description('ElevenLabs voice ID for the recap walkthrough (empty ⇒ recorder default)')
 param walkthroughVoiceId string = ''
 
-@description('Expected name of the recap walkthrough voice (optional assertion)')
-param walkthroughVoiceName string = ''
-
 @description('Cost category tag')
 param costCategoryTag object
 
@@ -139,10 +136,6 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
             {
               name: 'LOGBOOK_VOICE'
               value: walkthroughVoiceId
-            }
-            {
-              name: 'LOGBOOK_VOICE_NAME'
-              value: walkthroughVoiceName
             }
           ]
         }

@@ -54,7 +54,7 @@ When multiple files are provided, each file is treated as a separate survey "sec
 3. ✅ Orchestrates **4 specialized analysis agents** in parallel
 4. ✅ Runs **consolidation** to ensure consistency and deduplication
 5. ✅ Creates a **multi-tab HTML dashboard** with rich insights
-6. ✅ Deploys to **Azure Blob static website**
+6. ✅ Deploys to **surge.sh**
 7. ✅ Returns a **public URL**
 
 ## NEVER DO
@@ -191,16 +191,15 @@ python3 "$WALRUS_ROOT/templates/build-dashboard.py" \
 
 Output: `surveys/{survey-name}/{date}/dashboard/index.html`
 
-### Step 5: Deploy to Azure Blob static website
+### Step 5: Deploy to surge.sh
 
 ```bash
 node "$WALRUS_ROOT/upload-dashboard.js" --survey {survey-name} --dir surveys/{survey-name}/{date}/dashboard
 ```
 
-- Uploads the dashboard (incl. the recap `walkthrough.mp4` + poster when present) to the `$web` container of the dashboard storage account using the container's managed identity (no credentials needed).
+- Deploys the dashboard (incl. the recap `walkthrough.mp4` + poster when present) to **surge.sh**. Each survey gets its own domain: `https://ssw-walrus-{survey-name}.surge.sh/`.
+- One-time setup: `npx surge login` (free account), or `SURGE_LOGIN` + `SURGE_TOKEN` env vars. If neither is present the script fails fast with that instruction — report the local dashboard path instead and tell the user how to enable deploys.
 - Prints the public URL as a `DEPLOYED_URL=...` line. Read that line — you echo it in Step 6.
-- URL form: `https://{DASHBOARD_BASE_URL}/{survey-name}/` (e.g. `https://sawalrusstagingweb.z8.web.core.windows.net/q1-engagement/`)
-- `DASHBOARD_STORAGE_ACCOUNT` and `DASHBOARD_BASE_URL` are provided as env vars on the Container App Job. On a local run without them, skip deployment and just report the local dashboard path.
 
 ### Step 6: Report Success
 

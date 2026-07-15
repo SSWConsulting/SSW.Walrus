@@ -388,12 +388,13 @@ It generates all tabs (Overview, Responses, Themes, People, Insights & Actions),
 
 ## Deployment
 
-After generating the dashboard, deploy it to the Azure Blob static website:
+After generating the dashboard, deploy it to **surge.sh** (no Azure dependency):
 
 1. Run: `node upload-dashboard.js --survey {survey-name} --dir surveys/{survey-name}/{date}/dashboard`
-   - Uploads the dashboard (incl. the recap `walkthrough.mp4` + poster when present) to the `$web` container using the container's managed identity (no surge/credentials needed).
-   - `DASHBOARD_STORAGE_ACCOUNT` and `DASHBOARD_BASE_URL` are provided as env vars on the Container App Job. If they are absent (e.g. a local run), skip deployment and just report the local dashboard path.
-2. The script prints the public URL as a `DEPLOYED_URL=...` line. The URL form is `https://{DASHBOARD_BASE_URL}/{survey-name}/`.
+   - Deploys the dashboard (incl. the recap `walkthrough.mp4` + poster when present) to a per-survey surge.sh domain: `https://ssw-walrus-{survey-name}.surge.sh/`.
+   - One-time setup: `npx surge login` (or `SURGE_LOGIN` + `SURGE_TOKEN` env vars). If surge isn't authenticated the script fails fast with that instruction — report the local dashboard path and how to enable deploys.
+   - Legacy: when `DASHBOARD_STORAGE_ACCOUNT` is set (the old Container App Job), it deploys to the Azure Blob static website instead.
+2. The script prints the public URL as a `DEPLOYED_URL=...` line.
 3. **CRITICAL OUTPUT FORMAT**: echo that exact line in plain text in your final message:
 
    ```

@@ -58,8 +58,8 @@ installed individually: `/walrus:process-survey` (analysis → dashboard) and
 | Everything | `python3` |
 | XLSX input | `pip install openpyxl` (CSV needs nothing) |
 | Recap video (optional) | `ffmpeg`, `npm install` + `npx playwright install chromium` in the plugin dir |
-| Narrated voice (optional) | `ELEVENLABS_API_KEY` env var — absent ⇒ captioned silent video |
-| Azure deploy (optional) | `DASHBOARD_STORAGE_ACCOUNT` + `DASHBOARD_BASE_URL` env vars — absent ⇒ the dashboard is reported as a local `index.html` path |
+| Narrated voice (optional) | `ELEVENLABS_API_KEY` env var — absent ⇒ captioned silent video. `LOGBOOK_VOICE` picks the ElevenLabs voice id (a default voice is used when unset) |
+| Public dashboard URL (optional) | `npx surge login` once (free) or `SURGE_LOGIN` + `SURGE_TOKEN` env vars — absent ⇒ the dashboard is reported as a local `index.html` path |
 
 Cloning this repo works too — the same skills are picked up from `.claude/skills/`
 when you run Claude Code inside it.
@@ -181,9 +181,9 @@ SURVEY_FILE=path/to/survey.csv docker compose up
 claude -p "/process-survey path/to/survey.csv"
 ```
 
-Local runs have no `DASHBOARD_STORAGE_ACCOUNT`/`STORAGE_ACCOUNT` env, so the deploy
-and notify steps are skipped — the dashboard is generated under
-`surveys/{name}/{date}/dashboard/` and reported as a local path rather than published.
+Local runs deploy to surge.sh (after a one-time `npx surge login`); without surge
+auth the dashboard is generated under `surveys/{name}/{date}/dashboard/` and
+reported as a local path rather than published. The notify step is Azure-pipeline-only.
 
 ## GitHub Actions
 

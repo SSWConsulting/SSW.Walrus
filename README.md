@@ -50,21 +50,31 @@ get the full dashboard as a local `index.html`.
 
 ## Other environments
 
-The skills use the portable SKILL.md format, so they run beyond Claude Code —
-with a shrinking feature set. Claude Code is the recommended path; the rest are
-supported at the level below:
+The skills use the portable SKILL.md format, so Claude Code is not a hard
+requirement. Any TUI coding agent with shell access — **OpenCode, Codex, Hermes
+Agent, Cursor CLI, Cline, and the rest** — runs the whole pipeline fine: they
+execute the same scripts, record the same video, and deploy to surge just like
+Claude Code does. Install into whatever agents you use with one command:
 
-| | Claude Code | Other CLI agents¹ | Claude Cowork | claude.ai chat |
+```
+npx skills add SSWConsulting/SSW.Walrus
+```
+
+(via [skills.sh](https://www.skills.sh/), which detects the agents on your
+machine). Claude Code stays the *recommended* path only because it runs the four
+analysis agents as parallel subagents; other agents run the same analyses
+sequentially — same output, a slower analysis phase.
+
+| | Claude Code | Other TUI agents¹ | Claude Cowork | claude.ai chat |
 |---|---|---|---|---|
 | Install | plugin (above) | `npx skills add SSWConsulting/SSW.Walrus` | Customize → Skills → upload | Settings → Capabilities → upload |
 | Analysis + dashboard | ✅ parallel agents | ✅ sequential | ✅ sequential | ⚠️ needs a self-contained skill bundle² |
 | Recap video | ✅ | ✅ (if ffmpeg/Chromium present) | ⚠️ maybe (installable in its VM) | ❌ no ffmpeg/Chromium |
 | Surge deploy | ✅ | ✅ | ⚠️ awkward (token must reach the env) | ❌ no network |
 
-¹ Cursor, Codex, OpenCode, etc. via [skills.sh](https://www.skills.sh/). These
-installs ship only the skill folders, so on first run the skills fetch their
-helper scripts into `~/.cache/ssw-walrus` (one shallow clone). Platforms without
-Claude-style subagents run the four analyses sequentially.
+¹ OpenCode, Codex, Hermes Agent, Cursor CLI, Cline, … These installs ship only
+the skill folders, so on first run the skills fetch their helper scripts into
+`~/.cache/ssw-walrus` (one shallow clone).
 
 ² claude.ai's code-execution sandbox has no network and no runtime package
 installs, so the skills' script-fetch fallback can't work there — the skill

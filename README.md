@@ -1,57 +1,41 @@
 # SSW.Walrus
 
-Automated survey analysis pipeline. Every Monday at 8am AEST, a Power Automate flow
-sweeps a SharePoint folder for new survey CSV/XLSX files, hands them to Azure for
-processing with the Claude Code CLI, deploys a branded HTML dashboard (plus a narrated
-recap video) to an Azure Blob static website, and a second Power Automate flow emails
-the deliverable (branded HTML + dashboard link) to leadership.
+Turn a survey export (CSV/XLSX, e.g. Microsoft Forms) into a full report in one
+command: a branded multi-tab HTML dashboard — attributed responses, themes,
+per-person profiles, recommendations — plus a narrated recap video, deployed to
+a public URL.
 
-Ingress and egress run through **Power Automate** (standard connectors, under a
-service account), so there is **no Azure AD App Registration and no admin consent** —
-see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
+## Install
 
-**New here?** [`docs/how-it-works.md`](docs/how-it-works.md) walks the whole pipeline
-end to end (analysis → dashboard → recap → email), including the SSW branding and the
-SSW.People profile-photo resolution used on the People tab and in the video.
-
-## Install the skills
-
-You don't need any of the Azure pipeline to use Walrus — the analysis + dashboard
-run entirely locally.
-
-**Claude Code (plugin):**
+**Claude Code is the recommended way to run Walrus** — it's the only environment
+that gets the full pipeline (parallel analysis agents, recap video, deploy):
 
 ```
 /plugin marketplace add SSWConsulting/SSW.Walrus
 /plugin install walrus@ssw-walrus
 ```
 
-**Any other agent (Cursor, Codex, OpenCode, … via [skills.sh](https://www.skills.sh/)):**
+## Use
 
-```
-npx skills add SSWConsulting/SSW.Walrus
-```
-
-This installs the same skills into whatever agents it detects. On first run the
-skills fetch their helper scripts into `~/.cache/ssw-walrus` (they ship with the
-skill folder only); platforms without Claude-style subagents run the four
-analyses sequentially instead of in parallel.
-
-Then, in any project, generate a full report from a survey export in one command:
+In any project, point the one entry-point skill at a survey export:
 
 ```
 /walrus:generate-report path/to/survey.xlsx
 /walrus:generate-report culture.csv worklife.csv focus on burnout
 ```
 
-That runs the whole thing — four analysis agents in parallel, deterministic
-consolidation (bulk data extracted from the raw file, quotes verified against it),
-the multi-tab HTML dashboard, and a narrated recap video — and writes everything
-to `surveys/<name>/<date>/` in your current directory. The two stages are also
-installed individually: `/walrus:process-survey` (analysis → dashboard) and
-`/walrus:record-walkthrough` (recap video), plus `/walrus:list-surveys`.
+That runs everything — four analysis agents in parallel, deterministic
+consolidation (bulk data extracted from the raw file, quotes verified against
+it), the multi-tab HTML dashboard, the narrated recap video, and a surge.sh
+deploy — and writes it all to `surveys/<name>/<date>/` in your current
+directory. The stages are also installed individually so you can iterate on one
+without re-running the rest:
 
-**Requirements:**
+- `/walrus:process-survey` — analysis → dashboard → deploy
+- `/walrus:record-walkthrough` — recap video only (e.g. re-record after narration tweaks)
+- `/walrus:list-surveys` — what's been processed
+
+## Requirements
 
 | Needed for | Requirement |
 |---|---|
@@ -61,8 +45,78 @@ installed individually: `/walrus:process-survey` (analysis → dashboard) and
 | Narrated voice (optional) | `ELEVENLABS_API_KEY` env var — absent ⇒ captioned silent video. `LOGBOOK_VOICE` picks the ElevenLabs voice id (a default voice is used when unset) |
 | Public dashboard URL (optional) | `npx surge login` once (free) or `SURGE_LOGIN` + `SURGE_TOKEN` env vars — absent ⇒ the dashboard is reported as a local `index.html` path |
 
-Cloning this repo works too — the same skills are picked up from `.claude/skills/`
-when you run Claude Code inside it.
+Everything optional degrades gracefully: with nothing but `python3` you still
+get the full dashboard as a local `index.html`.
+
+## Other environments
+
+The skills use the portable SKILL.md format, so Claude Code is not a hard
+requirement. Any TUI coding agent with shell access — **OpenCode, Codex, Hermes
+Agent, Cursor CLI, Cline, and the rest** — runs the whole pipeline fine: they
+execute the same scripts, record the same video, and deploy to surge just like
+Claude Code does. Install into whatever agents you use with one command:
+
+```
+npx skills add SSWConsulting/SSW.Walrus
+```
+
+(via [skills.sh](https://www.skills.sh/), which detects the agents on your
+machine). Claude Code stays the *recommended* path only because it runs the four
+analysis agents as parallel subagents; other agents run the same analyses
+sequentially — same output, a slower analysis phase.
+
+| | Claude Code | Other TUI agents¹ | Claude Cowork | claude.ai chat |
+|---|---|---|---|---|
+| Install | plugin (above) | `npx skills add SSWConsulting/SSW.Walrus` | Customize → Skills → upload | Settings → Capabilities → upload |
+| Analysis + dashboard | ✅ parallel agents | ✅ sequential | ✅ sequential | ⚠️ needs a self-contained skill bundle² |
+| Recap video | ✅ | ✅ (if ffmpeg/Chromium present) | ⚠️ maybe (installable in its VM) | ❌ no ffmpeg/Chromium |
+| Surge deploy | ✅ | ✅ | ⚠️ awkward (token must reach the env) | ❌ no network |
+
+¹ OpenCode, Codex, Hermes Agent, Cursor CLI, Cline, … These installs ship only
+the skill folders, so on first run the skills fetch their helper scripts into
+`~/.cache/ssw-walrus` (one shallow clone).
+
+² claude.ai's code-execution sandbox has no network and no runtime package
+installs, so the skills' script-fetch fallback can't work there — the skill
+folder would need `templates/` bundled inside it before upload. Not currently
+packaged; ask if you need it.
+
+Cloning this repo also works — the same skills are picked up from
+`.claude/skills/` when you run Claude Code inside it.
+
+## How it works
+
+[`docs/how-it-works.md`](docs/how-it-works.md) walks the pipeline end to end
+(analysis → dashboard → recap → email), including the SSW branding and the
+SSW.People profile-photo resolution used on the People tab and in the video.
+
+## Developing this repo
+
+```bash
+# Process a local survey file
+SURVEY_FILE=path/to/survey.csv docker compose up
+
+# Or run Claude Code directly
+claude -p "/process-survey path/to/survey.csv"
+```
+
+Local runs deploy to surge.sh (after a one-time `npx surge login`); without surge
+auth the dashboard is generated under `surveys/{name}/{date}/dashboard/` and
+reported as a local path rather than published. The notify step is Azure-pipeline-only.
+
+---
+
+# The automated Azure pipeline (optional)
+
+Everything below is the **hands-off weekly automation** SSW runs internally — none
+of it is needed to use the skills above. Every Monday at 8am AEST, a Power
+Automate flow sweeps a SharePoint folder for new survey files, hands them to an
+Azure Container App Job running the Claude Code CLI, and a second flow emails the
+deployed dashboard link to leadership.
+
+Ingress and egress run through **Power Automate** (standard connectors, under a
+service account), so there is **no Azure AD App Registration and no admin consent** —
+see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
 
 ## Architecture
 
@@ -170,20 +224,6 @@ az deployment group create \
    az storage account keys list -n sawalrusstaging --query '[0].value' -o tsv
    ```
 5. Build the two Power Automate flows — see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
-
-## Local Development
-
-```bash
-# Process a local survey file
-SURVEY_FILE=path/to/survey.csv docker compose up
-
-# Or run Claude Code directly
-claude -p "/process-survey path/to/survey.csv"
-```
-
-Local runs deploy to surge.sh (after a one-time `npx surge login`); without surge
-auth the dashboard is generated under `surveys/{name}/{date}/dashboard/` and
-reported as a local path rather than published. The notify step is Azure-pipeline-only.
 
 ## GitHub Actions
 

@@ -202,7 +202,7 @@ az group create --name rg-walrus-staging --location australiaeast
 az deployment group create \
   --resource-group rg-walrus-staging \
   --template-file infra/main.bicep \
-  --parameters infra/staging.bicepparam
+  --parameters infra/staging.bicepparam   # or infra/prod.bicepparam
 ```
 
 ### Post-Deployment
@@ -230,6 +230,20 @@ az deployment group create \
 The `azure-deploy.yml` workflow builds the image server-side with `az acr build`
 (keyless, via GitHub OIDC), deploys the Bicep, and publishes the Function App on
 pushes to `main`.
+
+Which subscription it deploys into is driven entirely by repo variables, so
+moving environments is a variable flip rather than a code change:
+
+| Repo variable | Default | Notes |
+|---|---|---|
+| `WALRUS_ENVIRONMENT` | `staging` | Also selects `infra/{env}.bicepparam` |
+| `AZURE_RESOURCE_GROUP` | `rg-walrus-staging` | Must already exist |
+| `AZURE_SUBSCRIPTION_ID` | — | Target subscription |
+| `AZURE_CLIENT_ID` | — | Deploy identity holding the federated credential |
+| `AZURE_TENANT_ID` | — | SSW tenant |
+
+`ACR_NAME` and `FUNCTION_APP` are derived from `WALRUS_ENVIRONMENT` using the
+same naming convention as `infra/modules/*.bicep`, so they never drift.
 
 ## Environment Variables
 

@@ -2,6 +2,7 @@
 // Survey analysis pipeline: Power Automate -> queue -> Claude -> Azure-hosted dashboard -> email
 //
 // Deploy: az deployment group create -g <rg> --template-file main.bicep --parameters staging.bicepparam
+//         (prod.bicepparam for the SSW-owned production stack)
 
 targetScope = 'resourceGroup'
 

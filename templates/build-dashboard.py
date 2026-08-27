@@ -695,7 +695,9 @@ _BLOCKER_TONE = {
     "high": ("bg-ssw-red-50", "border-ssw-red", "severity-critical"),
     "moderate": ("bg-amber-50", "border-amber-400", "severity-high"),
     "low": ("bg-white", "border-ssw-gray-300", "severity-moderate"),
-    None: ("bg-white", "border-ssw-gray-300", "severity-moderate"),
+    # no duration stated (the "someone else" option carries none) — its own grey,
+    # so it never reads as an equivalent of the shortest duration
+    None: ("bg-ssw-gray-50", "border-ssw-gray-300", "severity-moderate"),
 }
 
 _BLOCKERS_NAV = (

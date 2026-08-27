@@ -31,7 +31,10 @@ def rows_from(headers, records):
         w.writerow(headers)
         w.writerows(records)
         path = f.name
-    return bc.load_rows(path)      # read only once the writer has flushed
+    try:
+        return bc.load_rows(path)  # read only once the writer has flushed
+    finally:
+        os.unlink(path)
 
 
 def main():

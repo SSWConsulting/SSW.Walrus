@@ -308,7 +308,7 @@ tab entry, and the whole panel are omitted otherwise — most non-CTF surveys ha
   blocked by someone else, and blocked for more than a day (the most severe option on the form).
 - **Person cards**, worst first — SSW profile photo, name, a severity badge, who is blocking them,
   and their own words verbatim in a blockquote. Colour follows severity: red-50 for more than a day,
-  amber-50 for a few hours, white for an hour or for an unstated duration.
+  amber-50 for a few hours, white for about an hour, and grey when the answer states no duration.
 - **"Typed their own answer — read these"** (only when non-empty) — answers put in the form's "Other"
   box. These are **never auto-classified and never counted**, because the prose regularly contradicts
   the word it opens with: one real answer began "No" and continued "But I was during the week... Adam

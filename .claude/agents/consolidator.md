@@ -46,7 +46,8 @@ Scan all agent outputs, group findings by their core topic, keep the ONE best ve
 | `themes` | "What are people saying about the topic in their own words?" |
 | `sentimentOverview` | "What's the team's *stance* on the topic — sold, skeptical, power-users?" |
 | `people` | "What did each individual person answer?" |
-| `redFlags` | "What signals should SSW notice — skeptics, adoption gaps, weak content, blockers?" |
+| `redFlags` | "What signals should SSW notice — skeptics, adoption gaps, weak content?" |
+| `blockers` | "Who is blocked, and what by?" — built from the raw file, never edited here |
 | `recommendations` | "What should SSW DO about this week's topic?" |
 | `hardTruths` | "What blunt one-line synthesis doesn't fit anywhere above? (max 2)" |
 
@@ -54,7 +55,7 @@ A score is a `questionBreakdown` item; what people *said* is a `theme`; an adopt
 
 ## Question coverage (mandatory)
 
-Carry **every** structured question into `questionBreakdown` and **every** free-text question into `freeTextQuestions`, each with their `individualResponses` intact (not truncated). Demote the logistics questions (retreat nag, lunch-order) — list them in `excludedQuestions`, don't analyze them. The "are you blocked?" question is a team-pulse side note, not topic data.
+Carry **every** structured question into `questionBreakdown` and **every** free-text question into `freeTextQuestions`, each with their `individualResponses` intact (not truncated). Demote the logistics questions (retreat nag, lunch-order) — list them in `excludedQuestions`, don't analyze them. The standing "are you blocked?" question is not topic data at all — it is extracted from the raw file into `blockers` and rendered on its own tab. Leave that section exactly as the script wrote it.
 
 `questionBreakdown` entries carry a `kind`:
 - `"rating"` → 1-5; `distribution` is counts per scale point; include `mean` + `commentary`.

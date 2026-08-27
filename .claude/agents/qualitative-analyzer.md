@@ -16,9 +16,8 @@ For a topic like AI CLI tools, the open questions are things like:
 - *"Your current project — name"* (context, not really analysable text)
 - The "✨IMPORTANT" prompt asking for experiences + rule feedback
 - The general *"Any comments?"* box (often about YakShaver/process — keep but treat as secondary)
-- The blocker follow-up *"Who + what was blocking you?"* (team pulse, secondary)
 
-Focus your themes on the **topic experiences**; treat process/comments and blocker text as secondary.
+Focus your themes on the **topic experiences**; treat process/comments as secondary. The blocker follow-up *"Who + what was blocking you?"* is **not yours** — it is extracted from the raw file and reported on the Blockers tab. Never pull a theme or a quote from it.
 
 ## Your task
 

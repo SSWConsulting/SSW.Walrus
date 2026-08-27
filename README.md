@@ -2,8 +2,8 @@
 
 Turn a survey export (CSV/XLSX, e.g. Microsoft Forms) into a full report in one
 command: a branded multi-tab HTML dashboard — attributed responses, themes,
-per-person profiles, recommendations — plus a narrated recap video, deployed to
-a public URL.
+per-person profiles, who is blocked and what by, recommendations — plus a
+narrated recap video, deployed to a public URL.
 
 ## Install
 

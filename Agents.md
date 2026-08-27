@@ -36,7 +36,7 @@ SSW.FatDigester9999/
 │   │   ├── quantitative-analyzer.md     # Numeric/scale question analysis
 │   │   ├── qualitative-analyzer.md      # Free-text theme extraction
 │   │   ├── sentiment-analyzer.md        # Emotional tone profiling
-│   │   ├── red-flag-detector.md         # Risk and warning detection
+│   │   ├── red-flag-detector.md         # Topic signals + recommendations
 │   │   └── consolidator.md              # Harmonization, people profiles, dedup
 │   └── skills/                          # User-facing skill definitions
 │       ├── process-survey/SKILL.md      # PRIMARY — full pipeline

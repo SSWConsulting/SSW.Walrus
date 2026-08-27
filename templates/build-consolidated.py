@@ -36,7 +36,7 @@ import os
 import re
 import sys
 import unicodedata
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ssw_people  # noqa: E402  (local module, same dir as this script)
@@ -158,7 +158,15 @@ def load_rows(path):
 
 
 _META_RE = re.compile(r"^(id|start time|completion time|last modified.*|email.*|name)$", re.I)
-_ADMIN_RE = re.compile(r"free lunch|order form|are you currently blocked|blocking you|retreat", re.I)
+_ADMIN_RE = re.compile(r"free lunch|order form|retreat", re.I)
+# Fallback only: used when the standing blocked question could not be located by
+# find_blocker_cols, so an undetected one is demoted rather than shown as a
+# topic question. When it IS located it goes to the Blockers tab instead.
+_BLOCKED_ADMIN_RE = re.compile(
+    r"are you currently blocked"
+    r"|(?:was|am|were) i blocking you"
+    r"|if i blocked you"
+    r"|who \+ what was blocking you", re.I)
 _OPT_PREFIX = re.compile(r"^\s*\d+\.\s*")
 
 
@@ -176,14 +184,19 @@ def _find_name_col(headers):
     return None
 
 
-def extract_survey(rows):
+def extract_survey(rows, blocker_cols=()):
     """Deterministically classify each column and extract the real responses.
 
     Returns {"questions": [...], "freeText": [...], "excluded": [...],
              "respondents": [names]} — the ground truth the dashboard binds to.
+
+    blocker_cols are the raw headers of the standing blocked question, which is
+    reported on its own tab (extract_blockers) and so is kept out of the
+    topic questions here.
     """
     if not rows:
         return None
+    blocker_cols = set(blocker_cols)
     headers = list(rows[0].keys())
     name_col = _find_name_col(headers)
     respondents = [r.get(name_col, "").strip() for r in rows] if name_col else []
@@ -200,7 +213,10 @@ def extract_survey(rows):
         vals = [v for _, v in answered]
         skip_rate = whole(100 * (total - len(answered)) / total) or 0
         qtext = re.sub(r"\s+", " ", h).strip()
-        is_admin = bool(_ADMIN_RE.search(h))
+        if h in blocker_cols:
+            excluded.append({"text": qtext, "reason": "Standing blocked question — reported on the Blockers tab"})
+            continue
+        is_admin = bool(_ADMIN_RE.search(h)) or bool(_BLOCKED_ADMIN_RE.search(h))
 
         numeric = [v for v in vals if re.fullmatch(r"\d+(\.\d+)?", v)]
         if len(numeric) == len(vals) and max(float(v) for v in vals) <= 10:
@@ -277,6 +293,289 @@ def extract_survey(rows):
 
 
 # ----------------------------------------------------------------------------
+# the standing "was anyone blocking you?" question -> the Blockers tab
+# ----------------------------------------------------------------------------
+# Every CTF form carries one question that is not about the week's topic: a
+# standing escalation valve asking whether the respondent was blocked, plus a
+# free-text follow-up naming who and what. It is about people rather than the
+# topic, so it gets its own tab instead of being demoted with the free-lunch
+# logistics.
+#
+# Columns are located by header text AND answer vocabulary, never by position.
+# Two things break position-based reads: the columns move between years (index
+# 20-21 in 2026 forms, 18-19 in 2024 ones), and on some weeks the week's own
+# topic question also contains the word "block" (e.g. "How often are you blocked
+# waiting on a UI/UX decision?").
+
+_BLOCK_RE = re.compile(r"block", re.I)
+
+# Answer vocabulary that identifies the standing question — phrases only its own
+# options contain. "N/A" is deliberately absent: it is ordinary filler that any
+# free-text column collects, and counting it let two columns qualify wrongly. A
+# plain survey asking "what is blocking your team from adopting Bicep?" answered
+# mostly "N/A" would otherwise grow a Blockers tab, footnoted with claims about a
+# form it never came from; and the standing question's own free-text follow-up
+# would qualify as a second standing question and consume itself.
+_STANDING_RE = re.compile(
+    r"had a good week|someone else was blocking|yes\s*-\s*for", re.I)
+
+_NUMBERED_RE = re.compile(r"^\s*\d+\s*[.)]")
+
+_SEVERITY_RE = [
+    (re.compile(r"more than a day", re.I), "high", "Blocked for more than a day"),
+    (re.compile(r"few hours", re.I), "moderate", "Blocked for a few hours"),
+    (re.compile(r"about an hour|\ban hour\b", re.I), "low", "Blocked for about an hour"),
+]
+
+
+def _header_union(rows):
+    """Every header across every row, in first-seen order.
+
+    Multi-file input concatenates rows whose header sets differ, so reading
+    headers from rows[0] alone silently drops the other files' respondents.
+    """
+    seen = OrderedDict()
+    for r in rows:
+        for h in r:
+            seen.setdefault(h, None)
+    return list(seen)
+
+
+def _column_values(rows, h):
+    return [v for v in (str(r.get(h, "") or "").strip() for r in rows) if v]
+
+
+def _is_choice_column(vals):
+    """True when a column's answers look like a fixed option set, not prose.
+
+    Deliberately NOT a numbered-prefix test. The standing question's follow-up is
+    itself numbered — "1. Who + what was blocking you? 2. Include the email
+    subject" — and respondents echo that numbering when they answer, so a prefix
+    test rejects the very column it is meant to find. Repetition is the honest
+    signal: a fixed option set repeats, prose does not. Filler is discounted
+    first, or a follow-up answered "N/A" by most people would look like a choice.
+    """
+    meaningful = [v for v in vals if v.strip().lower().rstrip(".") not in _LOW_SIGNAL]
+    # Too few real answers to judge repetition — a follow-up on a quiet week may
+    # hold only one or two. Absent evidence of a fixed option set, it is prose.
+    if len(meaningful) < 4:
+        return False
+    if any(len(v) > 120 for v in meaningful):
+        return False
+    distinct = {v.lower() for v in meaningful}
+    return len(distinct) <= max(2, len(meaningful) // 3)
+
+
+def find_blocker_cols(rows):
+    """[(answer_header, detail_header|None), ...] for the standing blocked question.
+
+    A list, not one pair: multi-file input concatenates rows whose headers differ,
+    and the question is re-worded between years, so one survey can carry the same
+    standing question under two headers. Empty when there is none — the common
+    case for any survey that is not a CTF form.
+
+    Columns are found by header text AND answer vocabulary, never by position.
+    They move between years (index 20-21 in 2026 forms, 18-19 in 2024), and some
+    weeks the week's own topic question also contains the word "block".
+    """
+    if not rows:
+        return []
+    headers = _header_union(rows)
+    block_cols = [h for h in headers if _BLOCK_RE.search(h)]
+    if not block_cols:
+        return []
+
+    # The standing question is the one whose ANSWERS use its fixed vocabulary,
+    # and it must show at least one strong marker to qualify at all.
+    standing = []
+    for h in block_cols:
+        vals = _column_values(rows, h)
+        if not vals:
+            continue
+        strong = sum(1 for v in vals if _STANDING_RE.search(v))
+        if strong / len(vals) >= 0.5:
+            standing.append((strong / len(vals), h))
+    standing = [h for _, h in sorted(standing, reverse=True)]
+    if not standing:
+        return []
+
+    used = set(standing)
+    pairs = []
+    for answer_col in standing:
+        answer_idx = headers.index(answer_col)
+
+        # The follow-up sits next to the question. Rank candidates by distance,
+        # preferring the column AFTER it — a topic question elsewhere in the file
+        # that merely says "block" must never win the detail slot, because its
+        # answers would then be printed as what is blocking that person.
+        def rank(h):
+            delta = headers.index(h) - answer_idx
+            return (abs(delta), 0 if delta > 0 else 1)
+
+        candidates = sorted((h for h in block_cols if h not in used), key=rank)
+        nxt = headers[answer_idx + 1] if answer_idx + 1 < len(headers) else None
+        if nxt and nxt not in used and nxt not in candidates:
+            candidates.append(nxt)      # a follow-up whose header omits "block"
+
+        detail = None
+        for h in candidates:
+            vals = _column_values(rows, h)
+            if vals and not _is_choice_column(vals):
+                detail = h
+                used.add(h)
+                break
+        pairs.append((answer_col, detail))
+    return pairs
+
+
+def classify_blocked(ans):
+    """yes | no | other-person | na | other-text, or None for an empty answer.
+
+    Only the form's own numbered options are classified. Anything typed into the
+    "Other" box comes back as other-text for a human to read, because the prose
+    regularly contradicts the word it opens with — one real answer began "No"
+    and continued "But I was during the week... [he] was not responsive".
+    """
+    a = re.sub(r"\s+", " ", str(ans or "")).strip()
+    if not a:
+        return None
+    al = a.lower()
+    if not _NUMBERED_RE.match(a):
+        return "na" if al.startswith("n/a") else "other-text"
+    if "someone else" in al:
+        return "other-person"
+    if "n/a" in al:
+        return "na"
+    if re.search(r"\byes\b", al):
+        return "yes"
+    if re.search(r"\bno\b", al):
+        return "no"
+    return "other-text"
+
+
+def _blocked_severity(ans):
+    """(severity, label), or (None, "") when the answer states no duration.
+
+    The "someone else was blocking me" option carries no duration, so it gets no
+    severity rather than a made-up middle one.
+    """
+    for rx, sev, label in _SEVERITY_RE:
+        if rx.search(ans):
+            return sev, label
+    return None, ""
+
+
+def _names_in(text, roster, unique_firsts):
+    """Roster names that appear in a free-text answer.
+
+    Full name always matches. A bare first name matches only when exactly one
+    person in the survey has it — two Toms must never resolve to one of them.
+    """
+    if not text:
+        return []
+    found = []
+    for full in roster:
+        parts = full.split()
+        if not parts:
+            continue
+        if re.search(r"\b" + re.escape(full) + r"\b", text, re.I):
+            found.append(full)
+        elif parts[0].lower() in unique_firsts and re.search(
+                r"\b" + re.escape(parts[0]) + r"\b", text, re.I):
+            found.append(full)
+    return found
+
+
+def extract_blockers(rows, blocked_by=None):
+    """Extract who is blocked and what is blocking them, from the raw file.
+
+    Returns None when the survey has no standing blocked question, in which case
+    the dashboard omits the Blockers tab entirely.
+
+    blocked_by names the person the question is asked in the voice of ("was I
+    blocking you?"), since the file itself never says who "I" is. Left unset,
+    that group is labelled neutrally.
+    """
+    pairs = find_blocker_cols(rows)
+    if not pairs:
+        return None
+
+    headers = _header_union(rows)
+    name_col = _find_name_col(headers)
+    roster = sorted({(r.get(name_col) or "").strip() for r in rows} - {""}) if name_col else []
+    first_counts = Counter(n.split()[0].lower() for n in roster if n.split())
+    unique_firsts = {f for f, c in first_counts.items() if c == 1}
+
+    owner = (blocked_by or "").strip() or "the person who asked"
+
+    counts = Counter()
+    people, needs_review = [], []
+    answered = 0
+    for r in rows:
+        # one row answers whichever wording its own file used
+        for answer_col, detail_col in pairs:
+            ans = re.sub(r"\s+", " ", str(r.get(answer_col, "") or "")).strip()
+            if ans:
+                break
+        else:
+            continue
+        kind = classify_blocked(ans)
+        if kind is None:
+            continue
+        answered += 1
+        counts[kind] += 1
+        name = (r.get(name_col) or "").strip() if name_col else ""
+        detail = re.sub(r"\s+", " ", str(r.get(detail_col, "") or "")).strip() if detail_col else ""
+        # "N/A" typed into the follow-up box means no detail was given, not a
+        # detail that reads "N/A" (same filler set the free-text curation uses).
+        if detail.strip().lower().rstrip(".") in _LOW_SIGNAL:
+            detail = ""
+        if kind == "other-text":
+            needs_review.append({"respondent": name or "—", "answer": ans, "detail": detail})
+            continue
+        if kind not in ("yes", "other-person"):
+            continue
+        severity, severity_label = _blocked_severity(ans)
+        if kind == "yes":
+            blocked_by_who = owner
+        else:
+            named = _names_in(detail, roster, unique_firsts)
+            blocked_by_who = ", ".join(named) if named else "Someone else"
+        people.append({
+            "respondent": name or "—",
+            "blockedBy": blocked_by_who,
+            "severity": severity,
+            "severityLabel": severity_label,
+            "answer": ans,
+            "detail": detail,
+            "photoUrl": None,
+        })
+
+    rank = {"high": 0, "moderate": 1, "low": 2}
+    people.sort(key=lambda p: (rank.get(p["severity"], 3), p["respondent"].lower()))
+    # severity is a property of the answer, not of the person — an unstated
+    # duration stays unstated rather than being rounded to the middle option.
+
+    answer_col, detail_col = pairs[0]
+    return {
+        "question": re.sub(r"\s+", " ", answer_col).strip(),
+        "detailQuestion": re.sub(r"\s+", " ", detail_col).strip() if detail_col else "",
+        "sourceColumns": [c for pair in pairs for c in pair if c],
+        "blockedBy": owner,
+        "responseCount": answered,
+        "blockedCount": len(people),
+        "blockedRate": (whole(100 * len(people) / answered) or 0) if answered else 0,
+        "byOwner": counts["yes"],
+        "bySomeoneElse": counts["other-person"],
+        "notBlocked": counts["no"],
+        "notApplicable": counts["na"],
+        "severityCounts": {s: sum(1 for p in people if p["severity"] == s)
+                           for s in ("high", "moderate", "low")},
+        "people": people,
+        "needsReview": needs_review,
+    }
+
+
 # quote grounding — anti-hallucination gate against the raw survey data
 # ----------------------------------------------------------------------------
 # Every quote the agents emit (theme quotes, notable quotes, standouts) is
@@ -795,17 +1094,8 @@ def build_red_flags(rf):
             "prediction": first(c, "suggestion", "prediction", default=""),
             "timeToAct": "Next time this topic runs",
         })
-    blockers = rf.get("blockers") or {}
-    if isinstance(blockers, dict) and (blockers.get("count") or blockers.get("items")):
-        cnt = whole(blockers.get("count")) or len(as_list(blockers.get("items")))
-        if cnt:
-            out.append({
-                "flag": f"{cnt} blocked this week (scrum pulse)",
-                "severity": "low",
-                "evidence": first(blockers, "note", default="Surfaced from the 'are you blocked?' check — pass to leads."),
-                "prediction": "Secondary to the topic; follow up in scrum.",
-                "timeToAct": "This week",
-            })
+    # No blocker signal here: the Blockers tab owns that subject, and it is built
+    # from the raw file (extract_blockers) rather than from an agent's count.
     return out
 
 
@@ -987,6 +1277,9 @@ def main():
     ap.add_argument("--data", default=None,
                     help="raw survey CSV(s) to verify quotes against "
                          "(default: *.csv next to the analysis dir)")
+    ap.add_argument("--blocked-by", default=None,
+                    help="who the standing blocked question is asked in the voice of "
+                         "(SSW CTF forms: Adam). The file never says who \"me\" is.")
     ap.add_argument("--no-photos", action="store_true",
                     help="skip SSW.People profile-photo resolution (offline/local runs)")
     args = ap.parse_args()
@@ -1012,7 +1305,11 @@ def main():
     data_paths = [args.data] if args.data else sorted(
         glob.glob(os.path.join(parent, "*.csv")) + glob.glob(os.path.join(parent, "*.xlsx")))
     grounder = QuoteGrounder(data_paths) if data_paths else None
-    extracted = extract_survey(grounder.rows) if grounder else None
+    # The standing blocked question is pulled out first so extract_survey can
+    # hold its columns back — it owns the Blockers tab, not the Responses tab.
+    blockers = extract_blockers(grounder.rows, args.blocked_by) if grounder else None
+    extracted = extract_survey(
+        grounder.rows, blockers["sourceColumns"] if blockers else ()) if grounder else None
 
     if extracted and (extracted["questions"] or extracted["freeText"]):
         question_breakdown = build_question_breakdown_from_data(extracted, quant)
@@ -1048,10 +1345,13 @@ def main():
         + [q.get("name") for q in notable]
         + [s.get("name") for s in standouts]
     )
-    all_names = [p["name"] for p in people["respondents"]] + quote_names
+    blocker_names = [b["respondent"] for b in (blockers or {}).get("people", [])]
+    all_names = [p["name"] for p in people["respondents"]] + quote_names + blocker_names
     photos = {} if args.no_photos else ssw_people.build_photo_map(all_names)
     for p in people["respondents"]:
         p["photoUrl"] = photos.get(p["name"])
+    for b in (blockers or {}).get("people", []):
+        b["photoUrl"] = photos.get(b["respondent"])
     resolved = sum(1 for v in photos.values() if v)
 
     # sentiment overview
@@ -1114,6 +1414,7 @@ def main():
     consolidated["sentimentOverview"] = sentiment_overview
     consolidated["people"] = people
     consolidated["photos"] = photos
+    consolidated["blockers"] = blockers
     consolidated["redFlags"] = build_red_flags(rf)
     consolidated["adoptionGaps"] = build_adoption_gaps(rf)
     consolidated["recommendations"] = build_recommendations(rf, sentiment)
@@ -1136,7 +1437,8 @@ def main():
             "Excluded email addresses (never carried from agent outputs)",
             "Demoted logistics questions",
             f"Assembled {len(people['respondents'])} people profiles",
-        ],
+        ] + ([f"Extracted {blockers['blockedCount']} blocked people from the standing "
+              f"blocked question (Blockers tab)"] if blockers else []),
         "qualityScore": 90,
         "quoteVerification": grounder.summary() if grounder else {"status": "SKIPPED — no raw survey file found"},
     }
@@ -1157,6 +1459,15 @@ def main():
     print(f"  questions: {len(question_breakdown)} structured, {len(free_text)} free-text")
     print(f"  themes: {len(themes)}  people: {len(people['respondents'])}  "
           f"signals: {len(consolidated['redFlags'])}  responses: {response_count}")
+    if blockers:
+        print(f"  blockers: {blockers['blockedCount']} blocked "
+              f"({blockers['byOwner']} by {blockers['blockedBy']}, "
+              f"{blockers['bySomeoneElse']} by someone else, "
+              f"{blockers['severityCounts']['high']} for more than a day)"
+              + (f" — {len(blockers['needsReview'])} free-text answers need a read"
+                 if blockers["needsReview"] else ""))
+    else:
+        print("  blockers: no standing blocked question in this survey — tab omitted")
     if not args.no_photos:
         print(f"  photos: resolved {resolved}/{len(photos)} names to SSW profile photos")
 

@@ -16,9 +16,10 @@ This is NOT an employee-engagement survey. Do not produce health scores, grades,
 - **Single-select:** one numbered option, e.g. *"Which CLI is your favourite?"* → `6. Claude Code`. Tally the option counts.
 - **Multi-select:** several semicolon-separated numbered options, e.g. *"Which CLIs have you tried?"* → `1. Copilot CLI;6. Claude Code;`. **Split on `;`**, strip the `N.` prefix, and tally each option across all respondents (counts can exceed respondent count).
 - **Categorical scale:** numbered options that form a spectrum, e.g. *"CLI vs web quality"* → `1. No difference` … `3. CLI almost always better`; *"Made your own subagents?"* → `2. Yes, one or two`. Tally the distribution across options.
-- **Admin / process (demote — see below):** the Brisbane-retreat nag, the 🍔 Free Lunch order reminder, "Rate the value of this week's task" (a meta-rating of the survey itself — keep but label clearly), "Are you blocked?" (a scrum check, handle as a side signal, not topic data).
+- **Admin / process (demote — see below):** the Brisbane-retreat nag, the 🍔 Free Lunch order reminder, "Rate the value of this week's task" (a meta-rating of the survey itself — keep but label clearly).
+- **The standing "Are you blocked?" question + its follow-up (SKIP ENTIRELY):** these are extracted from the raw file by `build-consolidated.py` and reported on their own **Blockers** tab. Do not count them, tally them, or mention them.
 
-**Demote admin/process questions:** the retreat nag and the free-lunch-order question are logistics — exclude them from the topic analysis entirely (note their existence in `excludedQuestions`). "Are you blocked?" + its follow-up are a team pulse, not topic data — surface counts only, lightly.
+**Demote admin/process questions:** the retreat nag and the free-lunch-order question are logistics — exclude them from the topic analysis entirely (note their existence in `excludedQuestions`). The standing blocked question is not yours at all — the Blockers tab owns it, built from the file in code.
 
 ## Your task
 
@@ -108,11 +109,6 @@ Use whole numbers for stats in prose.
     "adoptionHeadline": "Claude Code is the clear daily-driver favourite; the open question is depth, not adoption."
   },
 
-  "teamPulse": {
-    "blockedCount": 4,
-    "note": "4 respondents flagged being blocked this week — surfaced for scrum follow-up, not part of the topic analysis."
-  },
-
   "excludedQuestions": [
     "Have you filled in the excel sheet for the Brisbane brainstorming & retreat? (logistics)",
     "Free Lunch order form reminder (logistics)"
@@ -137,6 +133,6 @@ If multiple files are provided, tag each question with a `surveySource` (from th
 
 - **Tally, don't moralize** — counts and distributions, not health scores or grades.
 - **Split multi-selects** on `;` and strip `N.` prefixes before counting.
-- **Demote logistics** (retreat nag, lunch order) and keep "are you blocked?" as a light side note, not topic data.
+- **Demote logistics** (retreat nag, lunch order); leave the standing blocked question alone entirely — the Blockers tab owns it.
 - **Be decisive on the content ratings** — 7/10 is mediocre; real enthusiasm is 8+.
 - **Every structured topic question** appears with its distribution + individual responses.

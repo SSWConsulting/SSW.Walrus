@@ -27,7 +27,8 @@ The system accepts **CSV or XLSX** files exported from Microsoft Forms (or simil
   - **Multi-select:** semicolon-separated numbered options (e.g. CLIs tried → `1. Copilot CLI;6. Claude Code;`) — split on `;`, strip the `N.` prefix, tally each option.
   - **Categorical scale:** numbered options forming a spectrum (e.g. "CLI vs web quality").
   - **Free-text:** the topic experiences / opinions (the gold — "so we can all learn").
-  - **Admin/process (DEMOTE — not topic data):** retreat-sheet nag, 🍔 Free Lunch order reminder, "Are you blocked?" + blocker follow-up (a scrum pulse, surface as a side note), the general comments box.
+  - **Admin/process (DEMOTE — not topic data):** retreat-sheet nag, 🍔 Free Lunch order reminder, the general comments box.
+  - **The standing "Are you blocked?" question + its follow-up (OWN TAB):** every CTF form carries this escalation valve. It is NOT topic data and NOT logistics — it gets the **Blockers** tab, extracted from the raw file in code. See "Blockers" below.
 
 ### Multi-Survey Input
 
@@ -50,7 +51,8 @@ The skill automatically classifies columns as:
 - **Single-select / Multi-select** — numbered choice options (multi-select is semicolon-separated)
 - **Categorical scale** — numbered options forming a spectrum
 - **Free-text** — open topic opinions
-- **Admin/process** — logistics + the scrum blocker check (demoted, not topic data)
+- **Admin/process** — logistics (demoted, not topic data)
+- **Standing blocked question** — located by header text *and* answer vocabulary, then reported on the Blockers tab
 - **Metadata** — ID, timestamps, Email (excluded), Name (attribution only)
 
 ### Rule Context Extraction
@@ -69,7 +71,7 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 | `quantitative-analyzer` | Rating means + single/multi-select & categorical tallies | `analysis/quantitative.json` |
 | `qualitative-analyzer` | Topic opinions, use-cases, standout/contrarian takes | `analysis/qualitative.json` |
 | `sentiment-analyzer` | Team stance on the topic (enthusiasm…skepticism) + adoption depth | `analysis/sentiment.json` |
-| `red-flag-detector` | Signals & actions: skeptics, adoption gaps, weak content, blockers | `analysis/red-flags.json` |
+| `red-flag-detector` | Signals & actions: skeptics, adoption gaps, weak content | `analysis/red-flags.json` |
 | **`consolidator`** | **Harmonize all outputs, build people profiles, ensure consistency** | **`analysis/consolidated.json`** |
 
 ### Workflow
@@ -93,6 +95,7 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 │  • Pivots per-question responses → per-person profiles (code)   │
 │  • Carries individualResponses / allQuotes intact (code)        │
 │  • Excludes email, demotes logistics                            │
+│  • Extracts the standing blocked question (Blockers tab)        │
 │  • Optional: consolidator agent polishes synthesis fields only  │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -127,6 +130,17 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 - Quotes the agents surface (theme `allQuotes`, notable quotes, standouts) are still LLM-selected text, so `build-consolidated.py` verifies **each one against the respondent's own cells in the raw file**. Verbatim text passes; near-matches (fixed typo, trimmed) are **repaired back to the real cell text**; anything unverifiable is **dropped** and reported on stderr + in `consolidationNotes.quoteVerification` (`checked`/`repaired`/`dropped`/`droppedItems`).
 - Together these are the single chokepoint: the dashboard, result email, and recap video all render from `consolidated.json`, so nothing attributed to a person can say something they didn't write.
 - If a run reports many drops, an analysis agent invented or rewrote quotes — check `droppedItems` and consider re-running the qualitative agent.
+
+### Blockers (data-first, same as the bulk data)
+- Who is blocked, who by, and what the block is are extracted from the raw file by
+  `extract_blockers()` — **no agent sees this question**. The analysis agents are told to skip it
+  entirely so nothing is double-reported between the Blockers tab and Insights.
+- Columns are located by **header text AND answer vocabulary, never by position**. They move between
+  years (index 20-21 in 2026 forms, 18-19 in 2024), and some weeks the topic question itself contains
+  the word "block". Verified against 52 real CTF forms: 52/52 detected, and the counts reconcile with
+  a hand-checked 12-month audit of 3,449 responses.
+- Answers typed into the "Other" box are **never auto-classified**. They go to `needsReview` for a
+  human, because the prose regularly contradicts the word it opens with.
 
 ### Attribution
 - These surveys are **compulsory** — 100% response rate, no self-selection bias
@@ -184,6 +198,7 @@ Each tab answers ONE question. Before writing content for any section, ask: "Whi
 | **Responses** | "How did each question score and what do the distributions look like?" | Per-question scores, distributions, skip rates, correlations |
 | **Themes** | "What is the team saying about the topic in their own words?" | Topic themes, team stance, standout opinions, quotes |
 | **People** | "What did each individual person say?" | Per-respondent profiles, individual response views |
+| **Blockers** | "Who is blocked, and what is blocking them?" | The standing blocked question — who, by whom, severity, their own words |
 | **Insights & Actions** | "What signals should SSW notice and what should they DO about this topic?" | Signals to notice, adoption gaps, recommendations |
 
 For every piece of content, find the ONE tab whose question it answers best. If it could fit two tabs, pick the MORE SPECIFIC one (e.g., a person-specific insight → People, not Overview). If you need to reference content from another tab, write "(See People tab)" instead of repeating it.
@@ -284,8 +299,34 @@ Order (top to bottom): recap video → **Key Metrics** → Executive Summary →
   - Search filtering via respondent name in `x-show`
 - Data source: `consolidated.json → people.respondents[]` (assembled by consolidator from per-question individual responses)
 
-### Tab 5: Insights & Actions
-- **Signals to Notice** — From `redFlags`: skeptics worth hearing, adoption gaps, weak content, and blockers. Severity badges (high/moderate/low). These are **topic signals, NOT org risks** — a well-argued "the web UI is better for X" is valuable signal, not a threat.
+### Tab 5: Blockers
+
+Present **only** when the survey carries the standing blocked question. The nav item, the mobile
+tab entry, and the whole panel are omitted otherwise — most non-CTF surveys have no such question.
+
+- **Four stat cards** — blocked this week (of those who answered), blocked by the person who asked,
+  blocked by someone else, and blocked for more than a day (the most severe option on the form).
+- **Person cards**, worst first — SSW profile photo, name, a severity badge, who is blocking them,
+  and their own words verbatim in a blockquote. Colour follows severity: red-50 for more than a day,
+  amber-50 for a few hours, white for about an hour, and grey when the answer states no duration.
+- **"Typed their own answer — read these"** (only when non-empty) — answers put in the form's "Other"
+  box. These are **never auto-classified and never counted**, because the prose regularly contradicts
+  the word it opens with: one real answer began "No" and continued "But I was during the week... Adam
+  was not responsive." A person decides what those mean.
+- **Nobody blocked** — a single green-50 line saying so. Do not manufacture concern.
+- The exact question wording is footnoted, because it is re-worded between years.
+
+**Attribution.** A plain "Yes" means the person the question is asked in the voice of — CTF forms are
+written in Adam's voice, so pass `--blocked-by "Adam"` to `build-consolidated.py`. The file itself
+never records who "me" is, so without that flag the group is labelled neutrally. For "someone else was
+blocking me", the colleague is named only when they appear in the free-text answer AND match the
+survey's own roster; a bare first name resolves only when exactly one person in the survey has it.
+
+**This tab is current-week only.** It reports what this one form says. It does not know that a person
+has raised the same block for 23 weeks running — that needs cross-week state and is not built.
+
+### Tab 6: Insights & Actions
+- **Signals to Notice** — From `redFlags`: skeptics worth hearing, adoption gaps, and weak content. Severity badges (high/moderate/low). **Not blockers** — the Blockers tab owns those. These are **topic signals, NOT org risks** — a well-argued "the web UI is better for X" is valuable signal, not a threat.
 - **Adoption Gaps** — Where uptake is thin (e.g. "57% haven't built a subagent") with the % and the enablement opportunity.
 - **Recommendations** — Three tiers:
   - **Immediate** (this week): a quick win (e.g. share the top use-cases the team surfaced)
@@ -321,8 +362,12 @@ Run it after the four analysis agents have written their JSON:
 python3 templates/build-consolidated.py \
   surveys/{survey-name}/{date}/analysis \
   --survey-name "{topic}" --topic "{topic}" \
-  --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" [--focus "{focus}"]
+  --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" \
+  --blocked-by "Adam" [--focus "{focus}"]
 ```
+
+`--blocked-by` names whoever the standing blocked question is asked in the voice of. On an SSW CTF
+form that is always **Adam** — pass it, or the Blockers tab labels that group "the person who asked".
 
 The `consolidator` agent's only job is a light **polish pass after the script runs**: read the produced `consolidated.json` and improve the synthesis-only fields (`executiveSummary.bullets`, `overallVerdict`, `keyMetrics` labels, `hardTruths`, and de-dup obviously-duplicated themes) with small targeted edits. It must NOT regenerate the file or rewrite the bulky arrays. If the agent is skipped, the script's output is already a valid, complete dashboard input.
 
@@ -343,6 +388,8 @@ The `consolidator` agent's only job is a light **polish pass after the script ru
 | **Standout Responses** | `overview.standoutResponses[]` | `name` | `response` |
 | **People Numeric** | `people.respondents[].numericResponses[]` | — | `value` |
 | **People Text** | `people.respondents[].textResponses[]` | — | `text` |
+| **Blockers** | `blockers.people[]` | `respondent` | `detail` |
+| **Blockers (unclassified)** | `blockers.needsReview[]` | `respondent` | `answer` + `detail` |
 
 **All quote objects** (`allQuotes`, `notableQuotes`, `standoutResponses`) MUST include a `question` field containing the question text the respondent was answering. This provides essential context for readers.
 

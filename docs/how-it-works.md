@@ -74,6 +74,15 @@ Produces `consolidated.json`. Key behaviours beyond the straight pivots:
   photo (see [Branding & people photos](#branding--people-photos)). Writes a central
   `photos` map (`name → url|null`) and stamps `photoUrl` on each `people.respondents[]`.
   `--no-photos` skips the network lookup for offline/local runs.
+- **Blockers** — the standing "are you blocked?" question is pulled out of the raw file by
+  `extract_blockers()` and rendered on its own tab. Columns are found by header text **and** answer
+  vocabulary, never by position: they move between years (index 20-21 in 2026 forms, 18-19 in 2024),
+  and on some weeks the week's own topic question also contains the word "block". Verified against 52
+  real CTF forms — 52/52 detected, with counts reconciling against a hand-checked 12-month audit of
+  3,449 responses. Answers typed into the form's "Other" box are never auto-classified: they go to
+  `needsReview` for a person to read, because the prose regularly contradicts the word it opens with.
+  `--blocked-by "Adam"` names whoever the question is asked in the voice of, since the file does not
+  record who "me" is. No agent sees this question, so it cannot be double-reported on Insights.
 - **Stance breakdown (radar data)** — the six-stance breakdown that drives the Stance
   Profile radar comes from the sentiment agent. Runs vary in where they put it and how
   they case the keys, so `extract_stance_breakdown()` searches the known locations and
@@ -89,8 +98,9 @@ The optional `consolidator` agent only does a light polish pass on synthesis fie
 
 ## Dashboard (`build-dashboard.py` + `survey-dashboard.html`)
 
-Five tabs (Overview / Responses / Themes / People / Insights & Actions) in an **SSW
-Design System app-shell** — a left sidebar nav + top bar (not top tabs), with the
+Five tabs (Overview / Responses / Themes / People / Insights & Actions) — plus **Blockers** when
+the survey carries the standing blocked question — in an **SSW Design System app-shell**: a left
+sidebar nav + top bar (not top tabs), with the
 Tailwind config + `:root` tokens aligned to the DS (primary `#CD4242`, DS radius/shadows,
 Inter + IBM Plex Mono). `.ssw-card` is redefined to inherit DS chrome so generated cards
 pick it up automatically. Renderer notes worth knowing:
@@ -113,6 +123,12 @@ pick it up automatically. Renderer notes worth knowing:
   stays in `notableQuotes` for the recap video).
 - **Emoji** — decorative emoji were removed from tabs and headings; meaning is carried by
   the colour system (red/amber/green borders and badges), not icons.
+- **Blockers tab** — present only when the survey carries the standing blocked question; the
+  nav item and the mobile tab entry are rendered, not hardcoded, so they vanish with it.
+
+![The Blockers tab](https://github.com/SSWConsulting/SSW.Walrus/releases/download/assets/pr25-blockers-tab.png)
+
+*Synthetic data — a real run names real colleagues, so the sample above is invented.*
 
 ---
 

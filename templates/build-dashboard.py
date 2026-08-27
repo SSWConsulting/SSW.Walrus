@@ -763,7 +763,9 @@ def render_blockers_tab(b):
 
     tiles = "".join([
         _blocker_stat("Blocked this week", blocked, f"of {total} who answered",
-                      "text-ssw-red" if blocked else "text-green-600"),
+                      "text-ssw-red" if blocked
+                      else "text-ssw-charcoal" if b.get("needsReview")
+                      else "text-green-600"),
         _blocker_stat(f"Blocked by {owner}", b.get("byOwner") or 0,
                       "the standing question's own option"),
         _blocker_stat("Blocked by someone else", b.get("bySomeoneElse") or 0,
@@ -774,6 +776,12 @@ def render_blockers_tab(b):
 
     if people:
         cards = '<div class="space-y-3">' + "".join(_blocker_person_card(p) for p in people) + '</div>'
+    elif b.get("needsReview"):
+        # Never claim an all-clear over the top of answers nobody has classified —
+        # one of them may well say "Yes - for more than a day".
+        cards = ('<div class="bg-amber-50 border-l-4 border-amber-400 rounded-r-lg p-4">'
+                 '<p class="text-ssw-charcoal">Nobody could be counted automatically, but the '
+                 'answers below were typed in by hand and still need a read.</p></div>')
     else:
         cards = ('<div class="bg-green-50 border-l-4 border-green-600 rounded-r-lg p-4">'
                  '<p class="text-ssw-charcoal">Nobody reported being blocked this week.</p></div>')
@@ -951,7 +959,7 @@ def main():
     ft = len(c.get("freeTextQuestions") or [])
     pe = len((c.get("people") or {}).get("respondents") or [])
     bl = c.get("blockers")
-    blocked = f", {bl['blockedCount']} blocked" if bl else ""
+    blocked = f", {bl.get('blockedCount', '?')} blocked" if isinstance(bl, dict) else ""
     print(f"[build-dashboard] wrote {out_path} ({qn} questions, {ft} free-text, {pe} people{blocked})")
 
 

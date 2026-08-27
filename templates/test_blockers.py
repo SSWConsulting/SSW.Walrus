@@ -109,8 +109,80 @@ def main():
                            [["Alice Smith", "3. Weekly"], ["Bob Jones", "1. Rarely"]])
     assert bc.extract_blockers(topic_only) is None, "a topic question must not pose as the standing one"
 
+    regressions()
     print("test_blockers: all assertions passed")
     return 0
+
+
+def regressions():
+    """Cases found in review. Each one shipped a wrong answer to a reader."""
+
+    # A free-text topic question that also says "block", sitting BEFORE the
+    # standing question, used to win the detail slot — so the Blockers tab
+    # printed an unrelated answer as what was blocking that person.
+    TOPIC_FT = "What is blocking you from using stacked PRs more often?"
+    rows = rows_from(
+        ["Name", TOPIC_FT, STANDING, FOLLOWUP],
+        [["Alice Smith", "no time, too busy with client work",
+          "1. Yes - for more than a day", "Sam, the pricing sign-off"],
+         ["Bob Jones", "our repo tooling is not there", "5. No - had a good week", ""],
+         ["Cara Diaz", "reviewers are slow", "4. No - someone else was blocking me",
+          "waiting on Erin"],
+         ["Dev Patel", "habit, mostly", "5. No - had a good week", ""],
+         ["Erin Fox", "nothing really", "1. Yes - for more than a day",
+          "the staging access request"]])
+    b = bc.extract_blockers(rows, OWNER)
+    assert b["detailQuestion"].startswith("1. Who + what"), b["detailQuestion"]
+    assert b["people"][0]["detail"] == "Sam, the pricing sign-off", b["people"][0]
+    extracted = bc.extract_survey(rows, b["sourceColumns"])
+    free = [q["text"] for q in extracted["freeText"]]
+    assert TOPIC_FT in free, free                       # the topic question is still analysed
+    assert not any(t.startswith("1. Who + what") for t in free), free
+
+    # Respondents echo the follow-up's own numbering ("1. Who + what… 2. …"), so
+    # a numbered-prefix test rejected the very column it was meant to find and
+    # every card rendered "No detail given".
+    rows = rows_from(
+        ["Name", STANDING, FOLLOWUP],
+        [["Alice Smith", "1. Yes - for more than a day", "1. Sam 2. Re: pricing sign-off"],
+         ["Bob Jones", "1. Yes - for more than a day", "1. Sam 2. Re: newsletter"],
+         ["Cara Diaz", "2. Yes - for a few hours", "1. Sam 2. staging access"],
+         ["Dev Patel", "5. No - had a good week", ""]])
+    b = bc.extract_blockers(rows, OWNER)
+    assert b["detailQuestion"], "the numbered follow-up must still be found"
+    assert all(p["detail"] for p in b["people"]), b["people"]
+
+    # "N/A" is filler every free-text column collects. Counting it as standing
+    # vocabulary grew a Blockers tab on a survey that has no such question.
+    rows = rows_from(
+        ["Name", "What is blocking your team from adopting Bicep?"],
+        [["Alice Smith", "N/A"], ["Bob Jones", "N/A"],
+         ["Cara Diaz", "no time"], ["Dev Patel", "N/A"]])
+    assert bc.extract_blockers(rows) is None
+
+    # A standing question worded so it is not detected must still be demoted,
+    # not shown as a topic question.
+    rows = rows_from(
+        ["Name", "Are you currently blocked by me?", "Rate the video"],
+        [["Alice Smith", "Sort of, yes", "4"], ["Bob Jones", "not really", "5"],
+         ["Cara Diaz", "maybe", "3"]])
+    extracted = bc.extract_survey(rows, ())
+    assert not any("blocked by me" in q["text"]
+                   for q in extracted["questions"] + extracted["freeText"])
+
+    # Multi-file input concatenates rows whose headers differ, and the question is
+    # re-worded between weeks. Reading headers from rows[0] dropped the rest.
+    a = rows_from(["Name", STANDING, FOLLOWUP],
+                  [["Alice Smith", "1. Yes - for more than a day", "the pricing sign-off"],
+                   ["Bob Jones", "5. No - had a good week", ""]])
+    other = ("I am working hard to block people less. Are you currently blocked by me? "
+             "Tip: yes - for")
+    c = rows_from(["Name", other, "If I blocked you, what was blocking you?"],
+                  [["Cara Diaz", "1. Yes - for a few hours", "the staging access"],
+                   ["Dev Patel", "1. Yes - for more than a day", "design review"]])
+    b = bc.extract_blockers(a + c, OWNER)
+    assert b["responseCount"] == 4, b["responseCount"]
+    assert b["blockedCount"] == 3, b["blockedCount"]
 
 
 if __name__ == "__main__":

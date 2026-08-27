@@ -126,7 +126,7 @@ pick it up automatically. Renderer notes worth knowing:
 - **Blockers tab** — present only when the survey carries the standing blocked question; the
   nav item and the mobile tab entry are rendered, not hardcoded, so they vanish with it.
 
-![The Blockers tab](images/blockers-tab.png)
+![The Blockers tab](https://github.com/SSWConsulting/SSW.Walrus/releases/download/assets/pr25-blockers-tab.png)
 
 *Synthetic data — a real run names real colleagues, so the sample above is invented.*
 

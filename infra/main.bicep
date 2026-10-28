@@ -1,5 +1,6 @@
 // SSW.Walrus - Main Infrastructure Orchestration
-// Survey analysis pipeline: Power Automate -> queue -> Claude -> Azure-hosted dashboard -> email
+// Survey analysis pipeline: Logic App (Mon 8am) -> SharePoint file -> blob -> Container App Job
+// (Claude) -> $web dashboard + result blob -> Logic App emails the result
 //
 // Deploy: az deployment group create -g <rg> --template-file main.bicep --parameters staging.bicepparam
 //         (prod.bicepparam for the SSW-owned production stack)
@@ -69,7 +70,7 @@ module keyVaultRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
   }
 }
 
-// 4a. Storage (queues + inbox/results blobs; Power Automate <-> container bridge)
+// 4a. Storage (survey-inbox + survey-results blobs; Logic App <-> container bridge)
 module storage 'modules/storage.bicep' = {
   name: 'provision-storage-${suffix}'
   params: {
@@ -135,25 +136,6 @@ module containerApp 'modules/containerApp.bicep' = {
   ]
 }
 
-// 7. Function App (Queue trigger -> starts the Container App Job)
-module functionApp 'modules/functionApp.bicep' = {
-  name: 'provision-function-app-${suffix}'
-  params: {
-    project: project
-    environment: environment
-    location: location
-    managedIdentityId: managedIdentity.outputs.id
-    managedIdentityClientId: managedIdentity.outputs.clientId
-    keyVaultUrl: keyVault.outputs.keyVaultUrl
-    storageConnectionString: storage.outputs.connectionString
-    containerAppJobName: containerApp.outputs.jobName
-    costCategoryTag: costCategoryTag
-  }
-  dependsOn: [
-    keyVaultRoleAssignment
-  ]
-}
-
 // Outputs
 output managedIdentityClientId string = managedIdentity.outputs.clientId
 output keyVaultName string = keyVault.outputs.name
@@ -162,6 +144,5 @@ output storageAccountName string = storage.outputs.name
 output dashboardStorageAccountName string = dashboardStorage.outputs.name
 output dashboardStaticWebsiteHost string = dashboardStorage.outputs.staticWebsiteHost
 output containerAppJobName string = containerApp.outputs.jobName
-output functionAppName string = functionApp.outputs.name
 output acrLoginServer string = containerRegistry.outputs.loginServer
 output acrName string = containerRegistry.outputs.name

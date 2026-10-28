@@ -28,7 +28,7 @@ param imageTag string
 @description('Claude model to use')
 param claudeModel string
 
-@description('Main storage account name (survey-inbox / survey-results / survey-done)')
+@description('Main storage account name (survey-inbox / survey-results)')
 param storageAccountName string
 
 @description('Dashboard storage account name (static website hosting)')
@@ -39,6 +39,9 @@ param dashboardBaseUrl string
 
 @description('ElevenLabs voice ID for the recap walkthrough (empty ⇒ recorder default)')
 param walkthroughVoiceId string = ''
+
+@description('Record the narrated recap video (processor also needs the ElevenLabs key)')
+param recapEnabled bool = false
 
 @description('Cost category tag')
 param costCategoryTag object
@@ -130,6 +133,10 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
             // key itself comes from Key Vault (secret elevenlabs-api-key); these
             // are non-secret config. Empty voice ⇒ recorder falls back to a default.
             {
+              name: 'WALRUS_RECAP_ENABLED'
+              value: string(recapEnabled)
+            }
+            {
               name: 'LOGBOOK_TTS_PROVIDER'
               value: 'elevenlabs'
             }
@@ -145,8 +152,8 @@ resource containerAppJob 'Microsoft.App/jobs@2023-11-02-preview' = {
   tags: costCategoryTag
 }
 
-// Let the managed identity start this job (the Function App calls jobs.start
-// using this same identity).
+// Let the managed identity start this job and read its executions (the Logic App
+// runs as this same identity).
 var contributorRoleId = 'b24988ac-6180-42a0-ab88-20f7382dd24c'
 resource jobStartRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(containerAppJob.id, managedIdentityPrincipalId, contributorRoleId)

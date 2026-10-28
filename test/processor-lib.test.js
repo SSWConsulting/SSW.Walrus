@@ -82,3 +82,24 @@ test('test_meta_reads_consolidated', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('test_write_result_uploads_json', async () => {
+  const { writeResult } = require('../processor-lib');
+  const calls = {};
+  const containerClient = {
+    getBlockBlobClient(name) {
+      calls.name = name;
+      return {
+        async upload(body, length, opts) {
+          Object.assign(calls, { body, length, opts });
+        },
+      };
+    },
+  };
+  const payload = { notificationType: 'completed', dashboardUrl: 'https://x/s/' };
+  await writeResult(containerClient, 'run1-f.xlsx.json', payload);
+  assert.equal(calls.name, 'run1-f.xlsx.json');
+  assert.deepEqual(JSON.parse(calls.body), payload);
+  assert.equal(calls.length, Buffer.byteLength(calls.body));
+  assert.equal(calls.opts.blobHTTPHeaders.blobContentType, 'application/json');
+});

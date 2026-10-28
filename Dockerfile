@@ -41,7 +41,7 @@ USER appuser
 RUN npx playwright install chromium
 
 # Copy application files
-COPY --chown=appuser:appuser processor.js upload-dashboard.js entrypoint.sh ./
+COPY --chown=appuser:appuser processor.js processor-lib.js upload-dashboard.js entrypoint.sh ./
 COPY --chown=appuser:appuser templates/ ./templates/
 COPY --chown=appuser:appuser .claude/ ./.claude/
 COPY --chown=appuser:appuser CLAUDE.md Agents.md ./

@@ -3,11 +3,11 @@
 /**
  * processor.js — Claude Code CLI wrapper for survey processing
  *
- * Runs inside the Container App Job. Downloads the survey file that Power Automate
- * dropped in the `survey-inbox` blob container, invokes Claude Code to process it
- * (dashboard + embedded recap video, deployed to $web), and enqueues a `survey-done`
- * message that Power Automate (Flow B) turns into an email with the dashboard link.
- * All storage access uses the container's managed identity.
+ * Runs inside the Container App Job, started by the Logic App. Downloads the survey
+ * file the Logic App dropped in the `survey-inbox` blob container, invokes Claude
+ * Code to process it (dashboard, deployed to $web; recap video only when switched
+ * on), and writes the run's result JSON to `survey-results/{RESULT_BLOB}`, which the
+ * Logic App reads back and emails. All storage access uses the managed identity.
  */
 
 const { spawn } = require('child_process');
@@ -15,16 +15,17 @@ const fs = require('fs');
 const path = require('path');
 const { DefaultAzureCredential } = require('@azure/identity');
 const { BlobServiceClient } = require('@azure/storage-blob');
-const { QueueServiceClient } = require('@azure/storage-queue');
 const {
   loadConsolidatedMeta,
   buildEmail,
   shouldRecordRecap,
+  buildResultPayload,
+  writeResult,
   extractDeployedUrl,
+  RESULTS_CONTAINER,
 } = require('./processor-lib');
 
 const INBOX_CONTAINER = 'survey-inbox';
-const DONE_QUEUE = 'survey-done';
 const STORAGE_SUFFIX = process.env.STORAGE_SUFFIX || 'core.windows.net';
 
 // Phase budgets. The Container App Job replicaTimeout must be larger than the
@@ -54,6 +55,11 @@ async function main() {
 
   const surveyName = SURVEY_NAME;
   const fileName = FILE_NAME || path.basename(INBOX_BLOB);
+  let resultBlob = process.env.RESULT_BLOB;
+  if (!resultBlob) {
+    resultBlob = `${fileName}.json`;
+    console.warn(`[processor] RESULT_BLOB not set — writing the result to ${RESULTS_CONTAINER}/${resultBlob}`);
+  }
 
   console.log(`[processor] Starting processing for survey: ${surveyName}`);
   console.log(`[processor] Inbox blob: ${INBOX_CONTAINER}/${INBOX_BLOB}`);
@@ -66,6 +72,8 @@ async function main() {
   const credential = new DefaultAzureCredential({
     managedIdentityClientId: process.env.AZURE_CLIENT_ID,
   });
+  const results = new BlobServiceClient(`https://${STORAGE_ACCOUNT}.blob.${STORAGE_SUFFIX}`, credential)
+    .getContainerClient(RESULTS_CONTAINER);
 
   try {
     // 1. Download the survey file from the inbox blob container
@@ -110,7 +118,7 @@ async function main() {
     // The slug /process-survey actually deployed under (parsed from DEPLOYED_URL)
     // may differ from SURVEY_NAME — e.g. it's derived from the rule ("ai-cli-tools"
     // vs the blob "freelunch-ai-cli-test"). Everything downstream (recap folder,
-    // the survey-done message) must follow THAT slug, not the blob name.
+    // the result payload) must follow THAT slug, not the blob name.
     const slugMatch = dashboardUrl && dashboardUrl.match(/\/([^/]+)\/?$/);
     const deployedSlug = (slugMatch && slugMatch[1]) || surveyName;
 
@@ -130,27 +138,34 @@ async function main() {
       }
     }
 
-    // 4. Enqueue the survey-done message (Power Automate Flow B emails the result).
-    // The processor composes the body from the digest so Flow B needs no logic —
-    // bind the email body to `emailHtml` (HTML on) or the plain-text `message`.
+    // 4. Hand the result back to the Logic App, which emails it. The processor
+    // composes the body from the digest so the workflow needs no logic.
     const meta = loadConsolidatedMeta(deployedSlug);
-    const { message, emailHtml } = buildEmail(deployedSlug, dashboardUrl, meta, { recapIncluded });
-    await enqueueDone(STORAGE_ACCOUNT, credential, {
+    const email = buildEmail(deployedSlug, dashboardUrl, meta, { recapIncluded });
+    await writeResult(results, resultBlob, buildResultPayload({
       notificationType: 'completed',
       surveyName: deployedSlug,
       fileName,
       dashboardUrl,
-      topic: meta.topic || deployedSlug,
-      responseCount: meta.responseCount || null,
-      grade: meta.grade || null,
-      message,
-      emailHtml,
-    });
-    console.log('[processor] Enqueued survey-done message');
+      meta,
+      email,
+    }));
+    console.log(`[processor] Wrote result ${RESULTS_CONTAINER}/${resultBlob}`);
 
     console.log('[processor] Done!');
   } catch (error) {
     console.error(`[processor] Fatal error: ${error.message}`);
+    // Best-effort: give the Logic App's alert the reason. A missing result still alerts.
+    try {
+      await writeResult(results, resultBlob, buildResultPayload({
+        notificationType: 'failed',
+        surveyName,
+        fileName,
+        error: error.message,
+      }));
+    } catch (writeErr) {
+      console.error(`[processor] Could not write the failed result: ${writeErr.message}`);
+    }
     process.exit(1);
   }
 }
@@ -166,13 +181,6 @@ async function downloadInbox(account, credential, blobName, fileName) {
   const localPath = path.join(downloadDir, fileName);
   await blobClient.downloadToFile(localPath);
   return localPath;
-}
-
-async function enqueueDone(account, credential, payload) {
-  const service = new QueueServiceClient(`https://${account}.queue.${STORAGE_SUFFIX}`, credential);
-  // Plain JSON (not base64) — the Power Automate Azure Queues trigger reads the
-  // message content directly and parses it.
-  await service.getQueueClient(DONE_QUEUE).sendMessage(JSON.stringify(payload));
 }
 
 // Phase-2 prompt: finish delivery from the analysis already written to disk,

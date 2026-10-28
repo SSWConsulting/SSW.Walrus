@@ -101,6 +101,16 @@ function buildResultPayload({ notificationType, surveyName, fileName, dashboardU
   };
 }
 
+const RESULTS_CONTAINER = 'survey-results';
+
+// Upload the run's result JSON; `containerClient` is the survey-results ContainerClient.
+async function writeResult(containerClient, blobName, payload) {
+  const body = JSON.stringify(payload);
+  await containerClient.getBlockBlobClient(blobName).upload(body, Buffer.byteLength(body), {
+    blobHTTPHeaders: { blobContentType: 'application/json' },
+  });
+}
+
 function extractDeployedUrl(output) {
   const m = output.match(/^DEPLOYED_URL=(.+)$/m);
   return m ? m[1].trim() : null;
@@ -111,5 +121,7 @@ module.exports = {
   buildEmail,
   shouldRecordRecap,
   buildResultPayload,
+  writeResult,
   extractDeployedUrl,
+  RESULTS_CONTAINER,
 };

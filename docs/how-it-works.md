@@ -2,34 +2,34 @@
 
 SSW.Walrus turns a weekly **"Chewing the Fat" / Free Lunch** survey export (the team's
 opinions on one tech topic) into a branded, multi-tab HTML **dashboard** and a short
-narrated **recap video**, then emails the deliverable to leadership — all hands-off.
+narrated **recap video** (switched off until SSW has an ElevenLabs key), then emails
+the deliverable — all hands-off.
 
 This doc explains the end-to-end pipeline and the pieces that are easy to get wrong.
-For the Power Automate flow build (triggers/actions/connections) see
-[`power-automate-setup.md`](power-automate-setup.md).
+For the Logic App (schedule, connections, alerts, manual runs) see
+[`logic-app-setup.md`](logic-app-setup.md).
 
 ---
 
 ## The pipeline at a glance
 
 ```
-Mon 8am AEST ─ Flow A ─▶ survey-inbox (blob) + survey-processing (queue)
-                              │
-                   ProcessSurveyQueue Function ─▶ Container App Job (processor.js)
+Mon 8am AEST ─ Logic App ─▶ survey-inbox (blob) ─▶ starts the Container App Job (processor.js)
                               │
    ┌──────────────────────────┴───────────────────────────────────────────┐
    │ Phase 1  /process-survey : analyse → consolidate → render → deploy     │
    │ Phase 2  /record-walkthrough : narrate recap → re-embed → re-deploy    │
+   │          (only when recapEnabled + an ElevenLabs key)                  │
    └──────────────────────────┬───────────────────────────────────────────┘
                               │
-        $web static site (dashboard + recap video)  +  survey-done (queue)
+        $web static site (dashboard + recap video)  +  survey-results/{run}.json
                               │
-                        Flow B ─▶ email (branded HTML, dashboard link)
+                 Logic App (same run) ─▶ email (branded HTML, dashboard link)
 ```
 
 `processor.js` is the orchestrator. It downloads the inbox blob, runs the two Claude
-Code skill phases, deploys to the `$web` static-website container, and enqueues the
-`survey-done` message that Flow B turns into the result email.
+Code skill phases, deploys to the `$web` static-website container, and writes the
+result JSON (`survey-results/{RESULT_BLOB}`) that the Logic App reads back and emails.
 
 ---
 
@@ -56,13 +56,14 @@ Code skill phases, deploys to the `$web` static-website container, and enqueues 
 
 ## Phase 2 — `/record-walkthrough` (best-effort)
 
-Owned by a **separate skill**. When `ELEVENLABS_API_KEY` is set, `processor.js` invokes it
+Owned by a **separate skill**. When `WALRUS_RECAP_ENABLED=true` (Bicep `recapEnabled`)
+and `ELEVENLABS_API_KEY` is loaded, `processor.js` invokes it
 after the dashboard deploys. It builds a plan (`templates/build-walkthrough-plan.py`),
 records designed full-screen cards with Playwright + a hash-cached TTS pipeline
 (`templates/walkthrough-recorder.mjs`), muxes to one `walkthrough.mp4` with ffmpeg,
 re-embeds it in the dashboard (the renderer auto-adds the player when the video is
 present), and re-deploys to the **same URL**. It never blocks Phase 1, and there is no
-Power Automate change — the recap is served from the dashboard link already in the email.
+Logic App change — the recap is served from the dashboard link already in the email.
 
 ---
 
@@ -164,15 +165,15 @@ resolves to `null` and the dashboard/video simply show initials, exactly as befo
 
 ## Result email
 
-Flow B is a dumb renderer. The `survey-done` message carries a plain-text `message`
-and a branded `emailHtml`; Flow B binds the Outlook body to `emailHtml` with **Is HTML
-on**. The HTML **layout lives in `templates/email.html`** — a light, standard-SSW,
+The Logic App is a dumb renderer. The result JSON carries a plain-text `message`
+and a branded `emailHtml`; the Logic App's Outlook *Send an email (V2)* body is
+`emailHtml`. The HTML **layout lives in `templates/email.html`** — a light, standard-SSW,
 table-based design (logo, red accent rule, charcoal heading, one meta line, an optional
 one-line verdict, one red button, thin footer; SSW palette only). `buildEmail()` in
-`processor.js` just fills the placeholders (`{{LOGO_BLOCK}}`, `{{META}}`,
+`processor-lib.js` just fills the placeholders (`{{LOGO_BLOCK}}`, `{{META}}`,
 `{{VERDICT_BLOCK}}`, `{{DASHBOARD_URL}}`, …).
 
 To restyle the email, edit `templates/email.html` (keep it table-based + inline styles —
 Outlook ignores `<style>` blocks, flexbox, grid). To change what data goes in, edit
-`buildEmail()`. Either way, redeploy — no Power Automate change unless you rename a field
-in the Parse JSON schema.
+`buildEmail()`. Either way, redeploy — no Logic App change unless you rename a field it reads
+(`dashboardUrl`, `topic`, `emailHtml`, `error`).

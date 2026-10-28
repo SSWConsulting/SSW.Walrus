@@ -1,5 +1,5 @@
 // Dashboard Storage - Azure Blob Storage with static website for hosting survey dashboards.
-// Separate from the Function App's runtime storage account.
+// Separate from the main survey-inbox / survey-results storage account.
 //
 // Static website must be enabled post-deployment (one-off, data-plane operation):
 //   az storage blob service-properties update --account-name <name> \

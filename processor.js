@@ -16,6 +16,12 @@ const path = require('path');
 const { DefaultAzureCredential } = require('@azure/identity');
 const { BlobServiceClient } = require('@azure/storage-blob');
 const { QueueServiceClient } = require('@azure/storage-queue');
+const {
+  loadConsolidatedMeta,
+  buildEmail,
+  shouldRecordRecap,
+  extractDeployedUrl,
+} = require('./processor-lib');
 
 const INBOX_CONTAINER = 'survey-inbox';
 const DONE_QUEUE = 'survey-done';
@@ -111,10 +117,13 @@ async function main() {
     // 3b. Recap walkthrough — a SEPARATE phase (the record-walkthrough skill).
     // Best-effort: it records the recap, re-embeds it, and re-deploys to the same
     // URL — a failure here never affects the already-shipped dashboard.
-    if (dashboardUrl && process.env.ELEVENLABS_API_KEY) {
+    // Off unless WALRUS_RECAP_ENABLED=true and the ElevenLabs key is loaded.
+    let recapIncluded = false;
+    if (dashboardUrl && shouldRecordRecap(process.env)) {
       console.log(`[processor] Recording recap walkthrough (/record-walkthrough ${deployedSlug})...`);
       try {
         await runClaude(`/record-walkthrough ${deployedSlug}`, model, PHASE2_TIMEOUT_MS);
+        recapIncluded = true;
         console.log('[processor] Recap walkthrough complete');
       } catch (err) {
         console.warn(`[processor] Recap walkthrough skipped: ${err.message}`);
@@ -125,7 +134,7 @@ async function main() {
     // The processor composes the body from the digest so Flow B needs no logic —
     // bind the email body to `emailHtml` (HTML on) or the plain-text `message`.
     const meta = loadConsolidatedMeta(deployedSlug);
-    const { message, emailHtml } = buildEmail(deployedSlug, dashboardUrl, meta);
+    const { message, emailHtml } = buildEmail(deployedSlug, dashboardUrl, meta, { recapIncluded });
     await enqueueDone(STORAGE_ACCOUNT, credential, {
       notificationType: 'completed',
       surveyName: deployedSlug,
@@ -146,79 +155,6 @@ async function main() {
   }
 }
 
-// Pull the headline facts from the deployed digest for the result email.
-function loadConsolidatedMeta(slug) {
-  const base = path.join('surveys', slug);
-  if (!fs.existsSync(base)) return {};
-  for (const dateDir of fs.readdirSync(base)) {
-    const f = path.join(base, dateDir, 'analysis', 'consolidated.json');
-    if (!fs.existsSync(f)) continue;
-    try {
-      const c = JSON.parse(fs.readFileSync(f, 'utf8'));
-      const m = c.metadata || {};
-      const exec = c.executiveSummary || {};
-      const bullets = Array.isArray(exec.bullets) ? exec.bullets.slice(0, 3) : [];
-      return {
-        topic: m.topic || m.surveyName || slug,
-        responseCount: m.responseCount || null,
-        grade: c.overallGrade || null,
-        verdict: String(exec.overallVerdict || '').replace(/\s+/g, ' ').trim(),
-        video: (m.videoWatched || {}).title || null,
-        bullets,
-      };
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-// Compose the result email body (plain `message` + styled `emailHtml`) so Flow B
-// just renders one field — no flow-side logic or new dynamic content needed.
-// The HTML layout lives in templates/email.html (standard SSW format); we only
-// fill placeholders here so the design is editable without touching code.
-function buildEmail(surveyName, dashboardUrl, meta) {
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const topic = meta.topic || surveyName;
-  // Meta line: response count only. (No A-F grade — that lives on the dashboard's verdict.)
-  const metaLine = meta.responseCount ? `${meta.responseCount} responses` : '';
-  // The SSW logo is published at the web root by upload-dashboard.js; reference it
-  // by absolute URL (email clients strip data URIs). Derived from the deploy origin.
-  let logoUrl = null;
-  try { if (dashboardUrl) logoUrl = new URL(dashboardUrl).origin + '/ssw-logo.png'; } catch { /* leave null */ }
-
-  const message = [
-    `${topic} — Digesting the Fat`,
-    metaLine ? `${metaLine}.` : null,
-    meta.verdict || null,
-    `View the full report (3-min recap inside):`,
-    dashboardUrl,
-    `— SSW · Chewing the Fat`,
-  ].filter(Boolean).join('\n\n');
-
-  const logoBlock = logoUrl
-    ? `<img src="${esc(logoUrl)}" alt="SSW" width="120" style="display:block;height:auto;border:0;outline:none;text-decoration:none" />`
-    : `<span style="font-size:20px;font-weight:800;color:#333333;letter-spacing:1px">SSW</span>`;
-  const verdictBlock = meta.verdict
-    ? `<tr><td style="padding:0 0 20px;font-size:15px;line-height:1.5;color:#333333">${esc(meta.verdict)}</td></tr>`
-    : '';
-
-  // Strip the leading doc comment FIRST — it lists the same {{PLACEHOLDER}} names,
-  // and a naive first-match .replace() would fill those instead of the real ones.
-  const tpl = fs.readFileSync(path.join(__dirname, 'templates', 'email.html'), 'utf8')
-    .replace(/^\s*<!--[\s\S]*?-->\s*/, '');
-  const emailHtml = tpl
-    .replace('{{LOGO_BLOCK}}', logoBlock)
-    .replace('{{TOPIC}}', esc(topic))
-    .replace('{{META}}', esc(metaLine))
-    .replace('{{VERDICT_BLOCK}}', verdictBlock)
-    .replace(/\{\{DASHBOARD_URL\}\}/g, esc(dashboardUrl || '#'))
-    .replace('{{BUTTON_LABEL}}', 'View the full report')
-    .replace('{{FOOTER}}', 'SSW &middot; Chewing the Fat');
-
-  return { message, emailHtml };
-}
-
 async function downloadInbox(account, credential, blobName, fileName) {
   const service = new BlobServiceClient(`https://${account}.blob.${STORAGE_SUFFIX}`, credential);
   const blobClient = service.getContainerClient(INBOX_CONTAINER).getBlobClient(blobName);
@@ -237,11 +173,6 @@ async function enqueueDone(account, credential, payload) {
   // Plain JSON (not base64) — the Power Automate Azure Queues trigger reads the
   // message content directly and parses it.
   await service.getQueueClient(DONE_QUEUE).sendMessage(JSON.stringify(payload));
-}
-
-function extractDeployedUrl(output) {
-  const m = output.match(/^DEPLOYED_URL=(.+)$/m);
-  return m ? m[1].trim() : null;
 }
 
 // Phase-2 prompt: finish delivery from the analysis already written to disk,

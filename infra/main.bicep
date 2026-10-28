@@ -33,6 +33,29 @@ param claudeModel string = 'claude-opus-4-8'
 @description('ElevenLabs voice ID for the recap walkthrough (record-walkthrough skill)')
 param walkthroughVoiceId string = 'x9d3o60RLzlwegAit1SJ'
 
+@description('SharePoint site URL holding the survey folder')
+param sharePointSiteUrl string = 'https://sswcom.sharepoint.com/sites/SSWFreeLunch'
+
+@description('Folder the Forms export is dropped into each week')
+param sharePointFolderPath string = '/Shared Documents/General'
+
+@description('Folder processed files are moved to')
+param sharePointArchivePath string = '/Shared Documents/General/Processed'
+
+@description('Weekly result email recipients')
+@minLength(1)
+param resultEmailTo array
+
+@description('Failure / empty-Monday alert recipients')
+@minLength(1)
+param alertEmailTo array
+
+@description('Run the Logic App on its Monday schedule (false = workflow disabled)')
+param scheduleEnabled bool
+
+@description('Deploy the SharePoint/Outlook API connections. Set false after the first deploy if redeploying resets their authorisation.')
+param deployConnections bool = true
+
 @description('Cost category tag for billing')
 param costCategoryTag CostCategoryTag
 
@@ -136,6 +159,40 @@ module containerApp 'modules/containerApp.bicep' = {
   ]
 }
 
+// 7. SharePoint + Outlook API connections (authorise once in the portal)
+module logicAppConnections 'modules/logicAppConnections.bicep' = if (deployConnections) {
+  name: 'provision-logic-connections-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    location: location
+    costCategoryTag: costCategoryTag
+  }
+}
+
+// 8. Logic App (Mon 8am: SharePoint -> blob -> job -> email) + failed-run alert
+module logicApp 'modules/logicApp.bicep' = {
+  name: 'provision-logic-app-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    location: location
+    managedIdentityId: managedIdentity.outputs.id
+    storageAccountName: storage.outputs.name
+    jobName: containerApp.outputs.jobName
+    sharePointSiteUrl: sharePointSiteUrl
+    sharePointFolderPath: sharePointFolderPath
+    sharePointArchivePath: sharePointArchivePath
+    resultEmailTo: resultEmailTo
+    alertEmailTo: alertEmailTo
+    scheduleEnabled: scheduleEnabled
+    costCategoryTag: costCategoryTag
+  }
+  dependsOn: [
+    logicAppConnections
+  ]
+}
+
 // Outputs
 output managedIdentityClientId string = managedIdentity.outputs.clientId
 output keyVaultName string = keyVault.outputs.name
@@ -144,5 +201,6 @@ output storageAccountName string = storage.outputs.name
 output dashboardStorageAccountName string = dashboardStorage.outputs.name
 output dashboardStaticWebsiteHost string = dashboardStorage.outputs.staticWebsiteHost
 output containerAppJobName string = containerApp.outputs.jobName
+output logicAppName string = logicApp.outputs.name
 output acrLoginServer string = containerRegistry.outputs.loginServer
 output acrName string = containerRegistry.outputs.name

@@ -9,6 +9,8 @@ name: Build & Deploy (Azure)
 #   WALRUS_ENVIRONMENT    staging (default) | prod  -- also picks the bicepparam
 #   AZURE_RESOURCE_GROUP  rg-walrus-staging (default)
 #   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+#   WALRUS_DEPLOY_CONNECTIONS  true (default) | false once the SharePoint/Outlook
+#                              connections are authorised, if redeploys reset them
 # Every other resource name is derived below exactly as infra/modules/*.bicep
 # derives it, so the workflow and the templates stay in step.
 
@@ -53,4 +55,5 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
             --parameters "infra/${WALRUS_ENVIRONMENT}.bicepparam" \
-            --parameters imageTag=latest
+            --parameters imageTag=latest \
+            --parameters deployConnections=${{ vars.WALRUS_DEPLOY_CONNECTIONS || 'true' }}

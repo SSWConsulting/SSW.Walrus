@@ -33,6 +33,9 @@ param claudeModel string = 'claude-opus-4-8'
 @description('ElevenLabs voice ID for the recap walkthrough (record-walkthrough skill)')
 param walkthroughVoiceId string = 'x9d3o60RLzlwegAit1SJ'
 
+@description('Record the narrated recap video (also needs the elevenlabs-api-key secret). Parked until SSW has a key.')
+param recapEnabled bool = false
+
 @description('SharePoint site URL holding the survey folder')
 param sharePointSiteUrl string = 'https://sswcom.sharepoint.com/sites/SSWFreeLunch'
 
@@ -152,6 +155,7 @@ module containerApp 'modules/containerApp.bicep' = {
     dashboardStorageAccountName: dashboardStorage.outputs.name
     dashboardBaseUrl: dashboardStorage.outputs.staticWebsiteHost
     walkthroughVoiceId: walkthroughVoiceId
+    recapEnabled: recapEnabled
     costCategoryTag: costCategoryTag
   }
   dependsOn: [

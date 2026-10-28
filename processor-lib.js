@@ -111,6 +111,19 @@ async function writeResult(containerClient, blobName, payload) {
   });
 }
 
+// Lowercase, ASCII letters/digits and single dashes only — survey names reach a
+// shell prompt and the /process-survey argument list, where spaces, & and # break.
+function safeSlug(name) {
+  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+
+// Local file name for the downloaded export: safe slug + lowercase extension, so
+// /process-survey sees one path and build-consolidated's *.xlsx glob matches.
+function localSurveyFile(fileName) {
+  const ext = path.extname(fileName).toLowerCase();
+  return `${safeSlug(path.basename(fileName, path.extname(fileName)))}${ext}`;
+}
+
 function extractDeployedUrl(output) {
   const m = output.match(/^DEPLOYED_URL=(.+)$/m);
   return m ? m[1].trim() : null;
@@ -122,6 +135,8 @@ module.exports = {
   shouldRecordRecap,
   buildResultPayload,
   writeResult,
+  safeSlug,
+  localSurveyFile,
   extractDeployedUrl,
   RESULTS_CONTAINER,
 };

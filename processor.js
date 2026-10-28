@@ -21,6 +21,8 @@ const {
   shouldRecordRecap,
   buildResultPayload,
   writeResult,
+  safeSlug,
+  localSurveyFile,
   extractDeployedUrl,
   RESULTS_CONTAINER,
 } = require('./processor-lib');
@@ -53,7 +55,7 @@ async function main() {
     process.exit(1);
   }
 
-  const surveyName = SURVEY_NAME;
+  const surveyName = safeSlug(SURVEY_NAME);
   const fileName = FILE_NAME || path.basename(INBOX_BLOB);
   let resultBlob = process.env.RESULT_BLOB;
   if (!resultBlob) {
@@ -78,7 +80,7 @@ async function main() {
   try {
     // 1. Download the survey file from the inbox blob container
     console.log('[processor] Downloading survey file from blob inbox...');
-    const localPath = await downloadInbox(STORAGE_ACCOUNT, credential, INBOX_BLOB, fileName);
+    const localPath = await downloadInbox(STORAGE_ACCOUNT, credential, INBOX_BLOB, localSurveyFile(fileName));
     console.log(`[processor] Downloaded: ${fileName} → ${localPath}`);
 
     // 2. Run Claude Code: analysis + consolidation + dashboard (phase 1)

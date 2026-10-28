@@ -103,3 +103,15 @@ test('test_write_result_uploads_json', async () => {
   assert.equal(calls.length, Buffer.byteLength(calls.body));
   assert.equal(calls.opts.blobHTTPHeaders.blobContentType, 'application/json');
 });
+
+test('test_safe_slug_is_shell_safe', () => {
+  const { safeSlug } = require('../processor-lib');
+  assert.equal(safeSlug('free lunch – ai cli(1-41)'), 'free-lunch-ai-cli-1-41');
+  assert.equal(safeSlug('A&B#c'), 'a-b-c');
+});
+
+test('test_local_survey_file_has_no_spaces_and_lowercase_ext', () => {
+  const { localSurveyFile } = require('../processor-lib');
+  assert.equal(localSurveyFile('Free Lunch – AI CLI (1-41).XLSX'), 'free-lunch-ai-cli-1-41.xlsx');
+  assert.equal(localSurveyFile('survey.csv'), 'survey.csv');
+});

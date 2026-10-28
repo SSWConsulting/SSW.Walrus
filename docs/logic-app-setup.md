@@ -53,6 +53,9 @@ fails until each has at least one address. To send the report to SSWAll, edit
   processes whatever is in the folder.
 - **Re-run one file:** move it from `General/Processed` back to `General`, then Run
   trigger. A file that failed is never archived, so it's already there.
+- **Staging** deploys with the workflow **Disabled** (`scheduleEnabled = false`), and
+  a disabled workflow can't be run by hand either. To test there, **Enable**, then
+  Run trigger, then **Disable** again. The next deploy disables it anyway.
 - **Test without touching the live folder:** deploy with
   `sharePointFolderPath=/Shared Documents/General/Walrus-Test` (and the matching
   `sharePointArchivePath`), run it, then deploy again with the real paths.
@@ -78,3 +81,8 @@ The recap code is all still there, just switched off. Once SSW has an ElevenLabs
 2. Set `param recapEnabled = true` in `infra/{env}.bicepparam`.
 3. Redeploy. The job records the recap after the dashboard ships, and the email
    says "3-min recap inside" again.
+
+Check the time budget first. Phase 1 (45 min) + phase 2 (25 min) + the recap (25 min)
+can exceed the job's 90-minute `replicaTimeout`. Raise `replicaTimeout` in
+`infra/modules/containerApp.bicep` (and the Logic App's `Wait_for_job` timeout) to
+match.

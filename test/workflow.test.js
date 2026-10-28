@@ -101,3 +101,20 @@ test('test_missing_result_blob_still_alerts', () => {
   assert.ok(alert.runAfter.Process_file.includes('Failed'));
   assert.ok(alert.runAfter.Process_file.includes('TimedOut'));
 });
+
+test('test_archive_failure_sends_distinct_alert', () => {
+  const success = findAction(def, 'Succeeded_with_dashboard').actions;
+  assert.notEqual(success.Move_to_processed.inputs.body.nameConflictBehavior, 1, 'a name clash must not fail the move');
+  const alert = success.Send_archive_alert;
+  assert.ok(alert, 'archive failure needs its own alert');
+  assert.deepEqual(alert.runAfter, { Move_to_processed: ['Failed', 'TimedOut'] });
+  assert.ok(alert.inputs.body.Subject.includes('archive'));
+  assert.ok(alert.inputs.body.Body.includes('re-sent'));
+});
+
+test('test_start_job_sends_only_name_image_resources_env', () => {
+  const container = findAction(def, 'Start_job').inputs.body.containers[0];
+  assert.equal(typeof container, 'object');
+  assert.deepEqual(Object.keys(container).sort(), ['env', 'image', 'name', 'resources']);
+  assert.ok(container.env.includes("outputs('Run_env')"));
+});

@@ -171,6 +171,16 @@ def load_rows(path):
 _META_RE = re.compile(r"^(id|start time|completion time|last modified.*|email.*|name)$", re.I)
 _ADMIN_RE = re.compile(r"free lunch|order form|are you currently blocked|blocking you|retreat", re.I)
 _OPT_PREFIX = re.compile(r"^\s*\d+\.\s*")
+# context-only fields (which project you're on) — not topic data, never numbered
+_CONTEXT_RE = re.compile(r"current project|project name", re.I)
+_NA_RE = re.compile(r"N/?A\b", re.I)
+# Forms cuts exported headers (200 chars in the 23/10 export). A long header
+# that doesn't end a sentence was cut.
+_TRUNCATED_LEN = 195
+
+
+def _is_truncated(header):
+    return len(header) >= _TRUNCATED_LEN and not re.search(r"[.?!)]$", header)
 
 
 def _clean_option(v):
@@ -187,6 +197,43 @@ def _find_name_col(headers):
     return None
 
 
+def _option_number(raw):
+    m = re.match(r"^\s*(\d+)\.", str(raw))
+    return int(m.group(1)) if m else None
+
+
+def _add_option_stats(q, raw_answers):
+    """Option order (by the form's `N.` prefix, write-ins last) and percentages
+    on a base that leaves out N/A options. raw_answers: one list of raw option
+    strings per respondent who answered."""
+    numbers = OrderedDict()
+    for opts in raw_answers:
+        for raw in opts:
+            o = _clean_option(raw)
+            if o and o not in numbers:
+                numbers[o] = _option_number(raw)
+            elif o and numbers[o] is None:
+                numbers[o] = _option_number(raw)
+    numbered = sorted((o for o, n in numbers.items() if n is not None), key=lambda o: numbers[o])
+    write_ins = [o for o, n in numbers.items() if n is None]
+    na = [o for o in numbers if _NA_RE.match(o)]
+    picked = [{_clean_option(r) for r in opts} - {""} for opts in raw_answers]
+    counted = [p - set(na) for p in picked]
+    counted = [p for p in counted if p]
+    base = len(counted)
+    pct = OrderedDict()
+    if base:
+        for o in numbered + write_ins:
+            if o not in na:
+                pct[o] = whole(100 * sum(1 for p in counted if o in p) / base)
+    q["optionOrder"] = numbered + write_ins
+    q["optionNumbers"] = dict(numbers)
+    q["naOptions"] = na
+    q["base"] = base
+    q["baseLabel"] = "devs" if any(re.search(r"not a dev", o, re.I) for o in na) else "who answered"
+    q["percentages"] = pct
+
+
 def extract_survey(rows):
     """Deterministically classify each column and extract the real responses.
 
@@ -201,7 +248,7 @@ def extract_survey(rows):
 
     questions, free_text, excluded = [], [], []
     total = len(rows)
-    for h in headers:
+    for col, h in enumerate(headers):
         head_line = h.split("\n")[0].strip()
         if _META_RE.match(head_line):
             continue
@@ -244,6 +291,7 @@ def extract_survey(rows):
                 "skipRate": skip_rate, "responseCount": len(answered),
                 "individualResponses": per_person,
             }
+            _add_option_stats(q, [[p for p in v.split(";") if p.strip()] for _, v in answered])
         else:
             cleaned = [(nm, _clean_option(v)) for nm, v in answered]
             counts = OrderedDict()
@@ -264,27 +312,63 @@ def extract_survey(rows):
                     "skipRate": skip_rate, "responseCount": len(answered),
                     "individualResponses": [{"respondent": nm, "value": v} for nm, v in cleaned],
                 }
+                _add_option_stats(q, [[v] for _, v in answered])
             else:
                 if is_admin:
-                    excluded.append({"text": qtext, "reason": "Admin/logistics question (auto-demoted)"})
+                    excluded.append({"text": qtext, "column": col, "kind": "admin",
+                                     "reason": "Admin/logistics question (auto-demoted)"})
                     continue
                 free_text.append({
-                    "text": qtext, "responseCount": len(answered),
+                    "text": qtext, "column": col, "truncated": _is_truncated(qtext),
+                    "responseCount": len(answered),
                     "participationRate": whole(100 * len(answered) / total) or 0,
                     "responses": [{"respondent": nm, "text": v} for nm, v in answered],
                 })
                 continue
         if is_admin:
-            excluded.append({"text": qtext, "reason": "Admin/logistics question (auto-demoted)"})
+            excluded.append({"text": qtext, "column": col, "kind": "admin",
+                             "reason": "Admin/logistics question (auto-demoted)"})
             continue
+        q["column"] = col
+        q["truncated"] = _is_truncated(qtext)
         questions.append(q)
 
+    # ids first (agents already reference q{n}/qt{n} by this order), then pull
+    # out context-only fields such as the project name
     for i, q in enumerate(questions):
         q["id"] = f"q{i+1}"
     for i, q in enumerate(free_text):
         q["id"] = f"qt{i+1}"
+    for q in questions + free_text:
+        if _CONTEXT_RE.search(q["text"]):
+            excluded.append({"text": q["text"], "column": q["column"], "kind": "context",
+                             "reason": "Context-only field (not topic data)"})
+    questions = [q for q in questions if not _CONTEXT_RE.search(q["text"])]
+    free_text = [q for q in free_text if not _CONTEXT_RE.search(q["text"])]
+    excluded.sort(key=lambda e: e["column"])
+    for n, q in enumerate(sorted(questions + free_text, key=lambda q: q["column"]), 1):
+        q["number"] = f"Q{n}"
     return {"questions": questions, "freeText": free_text,
             "excluded": excluded, "respondents": respondents}
+
+
+_CATALOGUE_TYPES = {"rating": "rating", "single-select": "single-select",
+                    "multi-select": "multi-select"}
+
+
+def build_question_catalogue(extracted):
+    """Every topic question in form order with its Q number, type and options
+    — the skeleton Chapter 1 ("What we asked") and the agents work from."""
+    items = sorted(extracted["questions"] + extracted["freeText"], key=lambda q: q["column"])
+    return {
+        "questions": [{
+            "qid": q["id"], "number": q["number"],
+            "type": _CATALOGUE_TYPES.get(q.get("kind"), "free-text"),
+            "text": q["text"], "truncated": q["truncated"],
+            "options": list(q.get("optionOrder") or []),
+        } for q in items],
+        "excluded": [{"text": e["text"], "kind": e["kind"]} for e in extracted["excluded"]],
+    }
 
 
 # ----------------------------------------------------------------------------

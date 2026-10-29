@@ -2,7 +2,9 @@
 """
 build-dashboard.py — deterministic dashboard renderer for Chewing the Fat surveys.
 
-Renders the multi-tab HTML dashboard from consolidated.json + the template, the
+Renders the chapter dashboard (an "episode": The topic → Where the team is at →
+In their own words → Hot takes → What's next, then People) from
+consolidated.json + the template, the
 same way generate-slides.py renders the PPTX. Replaces having the LLM generate
 ~hundreds of Alpine.js cards as output tokens (which does not scale — a
 79-respondent People tab alone is thousands of lines of HTML).
@@ -15,6 +17,7 @@ The card markup matches the patterns documented inline in the template
 """
 
 import base64
+import datetime
 import html
 import json
 import os
@@ -755,6 +758,202 @@ def render_chart_scripts(consolidated):
 
 
 # ---------------------------------------------------------------------------
+# chapters — the sidebar is the episode, in story order
+# ---------------------------------------------------------------------------
+
+CHAPTERS = [("topic", "The topic"), ("team", "Where the team is at"), ("words", "In their own words"),
+            ("takes", "Hot takes"), ("next", "What's next")]
+CHAPTER_NAMES = dict(CHAPTERS)
+
+_ICONS = {
+    "topic": '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+    "team": '<line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="9"/><line x1="22" y1="20" x2="2" y2="20"/>',
+    "words": '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+    "takes": '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>',
+    "next": '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>',
+    "people": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+}
+
+
+def chapters_present(c):
+    """Chapter ids that have something real to say this week, in story order."""
+    story = c.get("story") or {}
+    present = []
+    for cid, _ in CHAPTERS:
+        if cid == "takes" and not (story.get("debates") or c.get("standoutResponses")):
+            continue
+        if cid == "words" and not (c.get("themes") or c.get("freeTextQuestions")):
+            continue
+        present.append(cid)
+    return present
+
+
+def _nav_button(cid, label, number=None):
+    num = f'<span class="ds-navnum">{number}</span>' if number else ""
+    return (
+        f'<button @click="go(\'{cid}\')" '
+        f':class="activeTab === \'{cid}\' ? \'ds-navitem ds-navitem--active\' : \'ds-navitem\'">'
+        f'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">{_ICONS[cid]}</svg>'
+        f'{num}<span>{esc(label)}</span></button>'
+    )
+
+
+def render_chapter_nav(present):
+    items = [_nav_button(cid, CHAPTER_NAMES[cid], i) for i, cid in enumerate(present, 1)]
+    items.append('<div class="ds-navdivider"></div>')
+    items.append(_nav_button("people", "People"))
+    return "".join(items)
+
+
+def render_chapter_tabs(present):
+    """Mobile tab row (the sidebar is hidden below lg)."""
+    return "".join(
+        f'<button @click="go(\'{cid}\')" '
+        f':class="activeTab === \'{cid}\' ? \'bg-ssw-red text-white\' : \'bg-white text-ssw-charcoal border border-ssw-gray-200\'" '
+        f'class="px-3 py-1.5 rounded-ds-sm text-sm font-semibold whitespace-nowrap">{esc(label)}</button>'
+        for cid, label in [(c, CHAPTER_NAMES[c]) for c in present] + [("people", "People")]
+    )
+
+
+def render_next_button(current_id, present):
+    i = present.index(current_id)
+    if i + 1 < len(present):
+        nxt = present[i + 1]
+        label, target = f"Next: {CHAPTER_NAMES[nxt]} →", nxt
+    else:
+        label, target = "← Back to the start", present[0]
+    return (
+        '<div class="flex justify-end mt-8 no-print">'
+        f'<button class="ds-nextbtn" @click="go(\'{target}\')">{esc(label)}</button></div>'
+    )
+
+
+def _chapter_section(cid, present, body):
+    return (
+        f'<div data-chapter="{cid}" x-show="activeTab === \'{cid}\'" x-cloak>'
+        f'{body}{render_next_button(cid, present)}</div>'
+    )
+
+
+def qtag(number):
+    return f'<span class="qtag">{esc(number)}</span>' if number else ""
+
+
+# ---------------------------------------------------------------------------
+# Chapter 1 — The topic (primes the reader before any result)
+# ---------------------------------------------------------------------------
+
+_TYPE_LABELS = {"rating": "Rating 1–5", "single-select": "Single choice",
+                "multi-select": "Multi choice", "free-text": "Free text"}
+
+
+def _date_line(meta):
+    date = meta.get("dateRange") or ""
+    try:
+        day = datetime.datetime.strptime(date, "%d/%m/%Y").strftime("%A") + " "
+    except ValueError:
+        day = ""
+    n = meta.get("responseCount") or 0
+    return "Chewing the Fat" + (f" · {day}{date}" if date else "") + f" · {n} people answered"
+
+
+def _catalogue_from_legacy(c):
+    """An older consolidated.json has no context — list its questions."""
+    items = []
+    for q in c.get("questionBreakdown") or []:
+        items.append({"number": q.get("number"), "type": q.get("kind") or "single-select",
+                      "text": q.get("text", ""), "summary": "", "truncated": False,
+                      "options": [] if q.get("kind") == "rating"
+                                 else list(q.get("optionOrder") or (q.get("distribution") or {}).keys()),
+                      "missingOptions": []})
+    for q in c.get("freeTextQuestions") or []:
+        items.append({"number": q.get("number"), "type": "free-text", "text": q.get("text", ""),
+                      "summary": "", "truncated": False, "options": [], "missingOptions": []})
+    if any(not i["number"] for i in items):
+        for n, i in enumerate(items, 1):
+            i["number"] = f"Q{n}"
+    return sorted(items, key=lambda i: int(re.sub(r"\D", "", i["number"]) or 0))
+
+
+def _short_label(text, limit=60):
+    t = re.sub(r"^[^\w(]+", "", str(text)).strip()
+    t = re.split(r"(?<=\?)\s|\s\(|\s-\s|\.\s", t)[0]
+    return t if len(t) <= limit else t[:limit].rsplit(" ", 1)[0] + "…"
+
+
+def _context_box(label, title, body, url=None, link_text=None):
+    return (
+        '<div class="ssw-card p-5">'
+        f'<p class="text-xs font-semibold uppercase tracking-wide text-ssw-gray-500 mb-2">{esc(label)}</p>'
+        f'<p class="font-semibold text-ssw-charcoal">{esc(title)}</p>'
+        + (f'<p class="text-sm text-ssw-gray-600 mt-1">{esc(body)}</p>' if body else "")
+        + (f'<a href="{esc(url)}" target="_blank" rel="noopener" class="text-sm text-ssw-red font-medium mt-2 inline-block">'
+           f'{esc(link_text or url)} ↗</a>' if url else "")
+        + '</div>'
+    )
+
+
+def _question_row(q):
+    text = q.get("summary") or q.get("text") or ""
+    marker = ""
+    if q.get("truncated"):
+        marker = ('<span class="text-xs text-ssw-gray-400 ml-2">summarised</span>' if q.get("summary")
+                  else '<span class="text-xs text-ssw-gray-400 ml-2">cut off in the export</span>')
+        if not q.get("summary"):
+            text = text + "…"
+    opts = [f'<span class="opt-chip">{esc(o)}</span>' for o in q.get("options") or []]
+    opts += [f'<span class="opt-chip opt-chip--deduced">{esc(o)} (deduced)</span>'
+             for o in q.get("missingOptions") or []]
+    return (
+        '<li class="flex items-start gap-3 py-3 border-b border-ssw-gray-100 last:border-0">'
+        f'{qtag(q.get("number"))}'
+        '<div class="flex-1 min-w-0">'
+        f'<p class="text-ssw-charcoal font-medium">{esc(text)}{marker}</p>'
+        f'<p class="text-xs text-ssw-gray-500 mt-0.5">{esc(_TYPE_LABELS.get(q.get("type"), "Choice"))}</p>'
+        + (f'<div class="flex flex-wrap gap-1.5 mt-2">{"".join(opts)}</div>' if opts else "")
+        + '</div></li>'
+    )
+
+
+def render_topic_chapter(c, out_path):
+    meta = c.get("metadata") or {}
+    ctx = c.get("context") or {}
+    questions = ctx.get("questions") or _catalogue_from_legacy(c)
+
+    boxes = []
+    rule = ctx.get("rule") or {}
+    if rule.get("title") or rule.get("summary"):
+        boxes.append(_context_box("The rule they read", rule.get("title") or "The rule", rule.get("summary"),
+                                  rule.get("url"), "Read the rule"))
+    video = ctx.get("video") or {}
+    if video.get("title"):
+        bits = [b for b in (video.get("length"), "optional" if video.get("optional") else None) if b]
+        boxes.append(_context_box("The video", video["title"], " · ".join(bits), video.get("url"), "Watch"))
+    task = ctx.get("task") or {}
+    if task.get("title") or task.get("summary"):
+        boxes.append(_context_box("The task", task.get("title") or "This week's task", task.get("summary")))
+
+    excluded = ctx.get("excluded") or [{"text": e.get("text", "")} for e in c.get("excludedQuestions") or []]
+    left_out = "; ".join(_short_label(e.get("text", "")) for e in excluded if e.get("text"))
+
+    return (
+        render_recap_video(out_path)
+        + '<section class="mb-8">'
+        f'<p class="text-sm font-semibold text-ssw-red mb-2">{esc(_date_line(meta))}</p>'
+        f'<h2 class="text-3xl text-ssw-charcoal">{esc(meta.get("topic") or meta.get("surveyName") or "This week")}</h2>'
+        + (f'<p class="text-lg text-ssw-gray-600 mt-3 max-w-3xl">{esc(ctx.get("idea"))}</p>' if ctx.get("idea") else "")
+        + '</section>'
+        + (f'<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">{"".join(boxes)}</div>' if boxes else "")
+        + '<section class="ssw-card p-6">'
+        '<h2 class="text-lg text-ssw-charcoal mb-2 flex items-center">'
+        '<span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>What we asked</h2>'
+        f'<ul>{"".join(_question_row(q) for q in questions)}</ul>'
+        + (f'<p class="text-xs text-ssw-gray-500 mt-4"><strong>Left out:</strong> {esc(left_out)}</p>' if left_out else "")
+        + '</section>'
+    )
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -771,8 +970,20 @@ def main():
 
     meta = c.get("metadata") or {}
     exec_sum = c.get("executiveSummary") or {}
+    present = chapters_present(c)
+    bodies = {
+        "topic": render_topic_chapter(c, out_path),
+        "team": "",
+        "words": "",
+        "takes": "",
+        "next": "",
+    }
 
     replacements = {
+        "{{CHAPTER_IDS}}": json.dumps(present + ["people"]),
+        "{{CHAPTER_NAV}}": render_chapter_nav(present),
+        "{{CHAPTER_TABS}}": render_chapter_tabs(present),
+        "{{CHAPTER_SECTIONS}}": "".join(_chapter_section(cid, present, bodies[cid]) for cid in present),
         "{{SSW_LOGO}}": logo_data_uri(),
         "{{SURVEY_NAME}}": esc(meta.get("surveyName") or meta.get("topic") or "Survey"),
         "{{DATE}}": esc(meta.get("dateRange") or ""),

@@ -1,0 +1,585 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "$connections": {
+      "type": "Object",
+      "defaultValue": {}
+    },
+    "identityId": {
+      "type": "String"
+    },
+    "subscriptionId": {
+      "type": "String"
+    },
+    "resourceGroup": {
+      "type": "String"
+    },
+    "jobName": {
+      "type": "String"
+    },
+    "storageAccount": {
+      "type": "String"
+    },
+    "siteUrl": {
+      "type": "String"
+    },
+    "folderPath": {
+      "type": "String"
+    },
+    "resultTo": {
+      "type": "Array"
+    },
+    "alertTo": {
+      "type": "Array"
+    }
+  },
+  "triggers": {
+    "Weekly": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Week",
+        "interval": 1,
+        "schedule": {
+          "weekDays": [
+            "Monday"
+          ],
+          "hours": [
+            "8"
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "AUS Eastern Standard Time"
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1
+        }
+      }
+    }
+  },
+  "actions": {
+    "Survey_date": {
+      "type": "Compose",
+      "inputs": "@formatDateTime(addDays(convertFromUtc(utcNow(), 'AUS Eastern Standard Time'), mul(-1, mod(add(dayOfWeek(convertFromUtc(utcNow(), 'AUS Eastern Standard Time')), 2), 7))), 'yyyy-MM-dd')",
+      "runAfter": {}
+    },
+    "Get_folder": {
+      "type": "ApiConnection",
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+          }
+        },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('siteUrl')))}/GetFolderByPath",
+        "queries": {
+          "path": "@parameters('folderPath')"
+        }
+      },
+      "runAfter": {
+        "Survey_date": [
+          "Succeeded"
+        ]
+      }
+    },
+    "List_folder": {
+      "type": "ApiConnection",
+      "inputs": {
+        "host": {
+          "connection": {
+            "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+          }
+        },
+        "method": "get",
+        "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('siteUrl')))}/folders/@{encodeURIComponent(body('Get_folder')?['Id'])}"
+      },
+      "runAfter": {
+        "Get_folder": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Filter_surveys": {
+      "type": "Query",
+      "inputs": {
+        "from": "@body('List_folder')",
+        "where": "@and(not(item()?['IsFolder']), startsWith(item()?['Name'], outputs('Survey_date')), or(endsWith(toLower(item()?['Name']), '.csv'), endsWith(toLower(item()?['Name']), '.xlsx')))"
+      },
+      "runAfter": {
+        "List_folder": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Any_surveys": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@length(body('Filter_surveys'))",
+              0
+            ]
+          }
+        ]
+      },
+      "runAfter": {
+        "Filter_surveys": [
+          "Succeeded"
+        ]
+      },
+      "actions": {
+        "For_each": {
+          "type": "Foreach",
+          "foreach": "@body('Filter_surveys')",
+          "runtimeConfiguration": {
+            "concurrency": {
+              "repetitions": 1
+            }
+          },
+          "actions": {
+            "Done_blob": {
+              "type": "Compose",
+              "inputs": "@concat('processed/', items('For_each')?['Name'], '.json')",
+              "runAfter": {}
+            },
+            "Check_done": {
+              "type": "Http",
+              "inputs": {
+                "method": "GET",
+                "uri": "https://@{parameters('storageAccount')}.blob.core.windows.net/survey-results/@{encodeUriComponent(outputs('Done_blob'))}",
+                "headers": {
+                  "x-ms-version": "2023-11-03"
+                },
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "identity": "@parameters('identityId')",
+                  "audience": "https://storage.azure.com/"
+                }
+              },
+              "runAfter": {
+                "Done_blob": [
+                  "Succeeded"
+                ]
+              }
+            },
+            "Already_done": {
+              "type": "If",
+              "expression": {
+                "and": [
+                  {
+                    "equals": [
+                      "@outputs('Check_done')?['statusCode']",
+                      200
+                    ]
+                  }
+                ]
+              },
+              "runAfter": {
+                "Check_done": [
+                  "Succeeded",
+                  "Failed"
+                ]
+              },
+              "actions": {},
+              "else": {
+                "actions": {
+                  "Process_file": {
+                    "type": "Scope",
+                    "actions": {
+                      "Survey_name": {
+                        "type": "Compose",
+                        "inputs": "@replace(replace(replace(toLower(items('For_each')?['Name']), '.xlsx', ''), '.csv', ''), ' ','-')",
+                        "runAfter": {}
+                      },
+                      "Result_blob": {
+                        "type": "Compose",
+                        "inputs": "@concat(workflow().run.name, '-', items('For_each')?['Name'], '.json')",
+                        "runAfter": {
+                          "Survey_name": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Get_file_content": {
+                        "type": "ApiConnection",
+                        "inputs": {
+                          "host": {
+                            "connection": {
+                              "name": "@parameters('$connections')['sharepointonline']['connectionId']"
+                            }
+                          },
+                          "method": "get",
+                          "path": "/datasets/@{encodeURIComponent(encodeURIComponent(parameters('siteUrl')))}/files/@{encodeURIComponent(items('For_each')?['Id'])}/content",
+                          "queries": {
+                            "inferContentType": false
+                          }
+                        },
+                        "runAfter": {
+                          "Result_blob": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Upload_to_inbox": {
+                        "type": "Http",
+                        "inputs": {
+                          "method": "PUT",
+                          "uri": "https://@{parameters('storageAccount')}.blob.core.windows.net/survey-inbox/@{encodeUriComponent(items('For_each')?['Name'])}",
+                          "headers": {
+                            "x-ms-blob-type": "BlockBlob",
+                            "x-ms-version": "2023-11-03"
+                          },
+                          "body": "@body('Get_file_content')",
+                          "authentication": {
+                            "type": "ManagedServiceIdentity",
+                            "identity": "@parameters('identityId')",
+                            "audience": "https://storage.azure.com/"
+                          }
+                        },
+                        "runAfter": {
+                          "Get_file_content": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Get_job": {
+                        "type": "Http",
+                        "inputs": {
+                          "method": "GET",
+                          "uri": "https://management.azure.com/subscriptions/@{parameters('subscriptionId')}/resourceGroups/@{parameters('resourceGroup')}/providers/Microsoft.App/jobs/@{parameters('jobName')}?api-version=2024-03-01",
+                          "authentication": {
+                            "type": "ManagedServiceIdentity",
+                            "identity": "@parameters('identityId')",
+                            "audience": "https://management.azure.com/"
+                          }
+                        },
+                        "runAfter": {
+                          "Upload_to_inbox": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Run_env": {
+                        "type": "Compose",
+                        "inputs": [
+                          {
+                            "name": "INBOX_BLOB",
+                            "value": "@items('For_each')?['Name']"
+                          },
+                          {
+                            "name": "SURVEY_NAME",
+                            "value": "@outputs('Survey_name')"
+                          },
+                          {
+                            "name": "FILE_NAME",
+                            "value": "@items('For_each')?['Name']"
+                          },
+                          {
+                            "name": "RESULT_BLOB",
+                            "value": "@outputs('Result_blob')"
+                          }
+                        ],
+                        "runAfter": {
+                          "Get_job": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Start_job": {
+                        "type": "Http",
+                        "operationOptions": "DisableAsyncPattern",
+                        "inputs": {
+                          "method": "POST",
+                          "uri": "https://management.azure.com/subscriptions/@{parameters('subscriptionId')}/resourceGroups/@{parameters('resourceGroup')}/providers/Microsoft.App/jobs/@{parameters('jobName')}/start?api-version=2024-03-01",
+                          "body": {
+                            "containers": [
+                              {
+                                "name": "@first(body('Get_job')?['properties']?['template']?['containers'])?['name']",
+                                "image": "@first(body('Get_job')?['properties']?['template']?['containers'])?['image']",
+                                "resources": "@first(body('Get_job')?['properties']?['template']?['containers'])?['resources']",
+                                "env": "@union(first(body('Get_job')?['properties']?['template']?['containers'])?['env'], outputs('Run_env'))"
+                              }
+                            ]
+                          },
+                          "authentication": {
+                            "type": "ManagedServiceIdentity",
+                            "identity": "@parameters('identityId')",
+                            "audience": "https://management.azure.com/"
+                          },
+                          "retryPolicy": {
+                            "type": "none"
+                          }
+                        },
+                        "runAfter": {
+                          "Run_env": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Wait_for_job": {
+                        "type": "Until",
+                        "expression": "@contains(createArray('Succeeded', 'Failed', 'Stopped', 'Degraded'), body('Get_execution')?['properties']?['status'])",
+                        "limit": {
+                          "count": 70,
+                          "timeout": "PT2H30M"
+                        },
+                        "actions": {
+                          "Delay": {
+                            "type": "Wait",
+                            "inputs": {
+                              "interval": {
+                                "count": 2,
+                                "unit": "Minute"
+                              }
+                            },
+                            "runAfter": {}
+                          },
+                          "Get_execution": {
+                            "type": "Http",
+                            "inputs": {
+                              "method": "GET",
+                              "uri": "https://management.azure.com/subscriptions/@{parameters('subscriptionId')}/resourceGroups/@{parameters('resourceGroup')}/providers/Microsoft.App/jobs/@{parameters('jobName')}/executions/@{body('Start_job')?['name']}?api-version=2024-03-01",
+                              "authentication": {
+                                "type": "ManagedServiceIdentity",
+                                "identity": "@parameters('identityId')",
+                                "audience": "https://management.azure.com/"
+                              }
+                            },
+                            "runAfter": {
+                              "Delay": [
+                                "Succeeded"
+                              ]
+                            }
+                          }
+                        },
+                        "runAfter": {
+                          "Start_job": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Get_result": {
+                        "type": "Http",
+                        "inputs": {
+                          "method": "GET",
+                          "uri": "https://@{parameters('storageAccount')}.blob.core.windows.net/survey-results/@{encodeUriComponent(outputs('Result_blob'))}",
+                          "headers": {
+                            "x-ms-version": "2023-11-03"
+                          },
+                          "authentication": {
+                            "type": "ManagedServiceIdentity",
+                            "identity": "@parameters('identityId')",
+                            "audience": "https://storage.azure.com/"
+                          }
+                        },
+                        "runAfter": {
+                          "Wait_for_job": [
+                            "Succeeded"
+                          ]
+                        }
+                      },
+                      "Succeeded_with_dashboard": {
+                        "type": "If",
+                        "expression": {
+                          "and": [
+                            {
+                              "equals": [
+                                "@body('Get_execution')?['properties']?['status']",
+                                "Succeeded"
+                              ]
+                            },
+                            {
+                              "not": {
+                                "equals": [
+                                  "@body('Get_result')?['dashboardUrl']",
+                                  "@null"
+                                ]
+                              }
+                            }
+                          ]
+                        },
+                        "runAfter": {
+                          "Get_result": [
+                            "Succeeded"
+                          ]
+                        },
+                        "actions": {
+                          "Send_result_email": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connection": {
+                                  "name": "@parameters('$connections')['office365']['connectionId']"
+                                }
+                              },
+                              "method": "post",
+                              "path": "/v2/Mail",
+                              "body": {
+                                "To": "@{join(parameters('resultTo'), ';')}",
+                                "Subject": "Survey results: @{body('Get_result')?['topic']}",
+                                "Body": "@{body('Get_result')?['emailHtml']}",
+                                "Importance": "Normal"
+                              }
+                            },
+                            "runAfter": {}
+                          },
+                          "Mark_done": {
+                            "type": "Http",
+                            "inputs": {
+                              "method": "PUT",
+                              "uri": "https://@{parameters('storageAccount')}.blob.core.windows.net/survey-results/@{encodeUriComponent(outputs('Done_blob'))}",
+                              "headers": {
+                                "x-ms-blob-type": "BlockBlob",
+                                "x-ms-version": "2023-11-03",
+                                "Content-Type": "application/json"
+                              },
+                              "body": {
+                                "fileName": "@items('For_each')?['Name']",
+                                "dashboardUrl": "@body('Get_result')?['dashboardUrl']",
+                                "run": "@workflow().run.name",
+                                "processedAt": "@utcNow()"
+                              },
+                              "authentication": {
+                                "type": "ManagedServiceIdentity",
+                                "identity": "@parameters('identityId')",
+                                "audience": "https://storage.azure.com/"
+                              }
+                            },
+                            "runAfter": {
+                              "Send_result_email": [
+                                "Succeeded"
+                              ]
+                            }
+                          },
+                          "Send_mark_done_alert": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                              "host": {
+                                "connection": {
+                                  "name": "@parameters('$connections')['office365']['connectionId']"
+                                }
+                              },
+                              "method": "post",
+                              "path": "/v2/Mail",
+                              "body": {
+                                "To": "@{join(parameters('alertTo'), ';')}",
+                                "Subject": "Walrus report sent, but not marked done: @{items('For_each')?['Name']}",
+                                "Body": "<p>The report for <b>@{items('For_each')?['Name']}</b> was emailed, but writing its done marker (survey-results/@{outputs('Done_blob')}) failed.</p><p><b>Don't run the trigger by hand again this week</b>, or the report will be re-sent.</p><p>Logic App run: @{workflow().run.name}<br><a href=\"https://portal.azure.com/#resource@{workflow().id}\">Open the Logic App</a> (Run history shows each step's inputs and outputs)</p>",
+                                "Importance": "High"
+                              }
+                            },
+                            "runAfter": {
+                              "Mark_done": [
+                                "Failed",
+                                "TimedOut"
+                              ]
+                            }
+                          }
+                        },
+                        "else": {
+                          "actions": {
+                            "Send_run_alert": {
+                              "type": "ApiConnection",
+                              "inputs": {
+                                "host": {
+                                  "connection": {
+                                    "name": "@parameters('$connections')['office365']['connectionId']"
+                                  }
+                                },
+                                "method": "post",
+                                "path": "/v2/Mail",
+                                "body": {
+                                  "To": "@{join(parameters('alertTo'), ';')}",
+                                  "Subject": "Walrus run failed: @{items('For_each')?['Name']}",
+                                  "Body": "<p>The weekly Walrus run did not produce a report for <b>@{items('For_each')?['Name']}</b>. Fix the cause, then run the trigger by hand before Friday to retry. A manual run picks up the same file.</p><p>Job status: @{body('Get_execution')?['properties']?['status']}<br>Error: @{coalesce(body('Get_result')?['error'], 'none reported (the dashboard was not deployed)')}<br>Logic App run: @{workflow().run.name}<br><a href=\"https://portal.azure.com/#resource@{workflow().id}\">Open the Logic App</a> (Run history shows each step's inputs and outputs)<br>Job logs: <code>az containerapp job logs show -n @{parameters('jobName')} -g @{parameters('resourceGroup')} --execution @{body('Start_job')?['name']}</code></p>",
+                                  "Importance": "High"
+                                }
+                              },
+                              "runAfter": {}
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "runAfter": {}
+                  },
+                  "Failed_steps": {
+                    "type": "Query",
+                    "inputs": {
+                      "from": "@result('Process_file')",
+                      "where": "@equals(item()?['status'], 'Failed')"
+                    },
+                    "runAfter": {
+                      "Process_file": [
+                        "Failed",
+                        "TimedOut"
+                      ]
+                    }
+                  },
+                  "Alert_on_failure": {
+                    "type": "ApiConnection",
+                    "inputs": {
+                      "host": {
+                        "connection": {
+                          "name": "@parameters('$connections')['office365']['connectionId']"
+                        }
+                      },
+                      "method": "post",
+                      "path": "/v2/Mail",
+                      "body": {
+                        "To": "@{join(parameters('alertTo'), ';')}",
+                        "Subject": "Walrus run failed: @{items('For_each')?['Name']}",
+                        "Body": "<p>The weekly Walrus run failed while processing <b>@{items('For_each')?['Name']}</b>. Fix the cause, then run the trigger by hand before Friday to retry. A manual run picks up the same file.</p><p>Failed step: @{first(body('Failed_steps'))?['name']}<br>Detail: @{first(body('Failed_steps'))?['error']?['message']}<br>Logic App run: @{workflow().run.name}<br><a href=\"https://portal.azure.com/#resource@{workflow().id}\">Open the Logic App</a> (Run history shows each step's inputs and outputs)<br>Job logs: <code>az containerapp job logs show -n @{parameters('jobName')} -g @{parameters('resourceGroup')} --execution @{body('Start_job')?['name']}</code></p>",
+                        "Importance": "High"
+                      }
+                    },
+                    "runAfter": {
+                      "Process_file": [
+                        "Failed",
+                        "TimedOut"
+                      ],
+                      "Failed_steps": [
+                        "Succeeded",
+                        "Failed"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {
+          "Send_no_file_notice": {
+            "type": "ApiConnection",
+            "inputs": {
+              "host": {
+                "connection": {
+                  "name": "@parameters('$connections')['office365']['connectionId']"
+                }
+              },
+              "method": "post",
+              "path": "/v2/Mail",
+              "body": {
+                "To": "@{join(parameters('alertTo'), ';')}",
+                "Subject": "No survey file found for Friday @{outputs('Survey_date')}",
+                "Body": "<p>Walrus found no .csv or .xlsx starting with <b>@{outputs('Survey_date')}</b> in @{parameters('folderPath')}, so no report was produced. If there was a CTF that Friday, check the export's name starts with the date, then run the Logic App's trigger by hand.</p>",
+                "Importance": "Normal"
+              }
+            },
+            "runAfter": {}
+          }
+        }
+      }
+    }
+  },
+  "outputs": {}
+}

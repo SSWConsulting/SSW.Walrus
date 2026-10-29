@@ -13,9 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Install openpyxl for xlsx parsing. The build-consolidated / build-dashboard
 # scripts use only stdlib. World-readable venv.
+# Put the venv on PATH rather than symlinking its python3: Python only finds the
+# venv (pyvenv.cfg) when started from the venv's own bin/, so a symlink in
+# /usr/local/bin runs plain system Python without openpyxl.
 RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir openpyxl && \
-    ln -sf /opt/venv/bin/python3 /usr/local/bin/python3
+    /opt/venv/bin/pip install --no-cache-dir openpyxl
+ENV PATH="/opt/venv/bin:${PATH}"
 
 # Run as a non-root user — `claude --dangerously-skip-permissions` refuses to run as root.
 RUN useradd -m -u 1001 appuser && mkdir -p /home/appuser/app && chown -R appuser:appuser /home/appuser
@@ -41,7 +44,7 @@ USER appuser
 RUN npx playwright install chromium
 
 # Copy application files
-COPY --chown=appuser:appuser processor.js upload-dashboard.js entrypoint.sh ./
+COPY --chown=appuser:appuser processor.js processor-lib.js upload-dashboard.js entrypoint.sh ./
 COPY --chown=appuser:appuser templates/ ./templates/
 COPY --chown=appuser:appuser .claude/ ./.claude/
 COPY --chown=appuser:appuser CLAUDE.md Agents.md ./

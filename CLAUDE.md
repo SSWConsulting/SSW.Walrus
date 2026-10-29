@@ -359,10 +359,10 @@ The official SSW logo lives in `templates/assets/` (`ssw-logo.png` colour, `ssw-
 The narrated recap video is **not** part of this skill. It's owned by the
 **`record-walkthrough`** skill and runs as its **own pipeline phase** after the
 dashboard deploys (processor.js invokes `/record-walkthrough` when
-`ELEVENLABS_API_KEY` is set). That skill records the recap, re-embeds it into the
+`WALRUS_RECAP_ENABLED=true` and `ELEVENLABS_API_KEY` is set — switched off for now). That skill records the recap, re-embeds it into the
 dashboard (`build-dashboard.py` auto-adds the player when `walkthrough.mp4` is
 present), and re-deploys — so it's served from the same dashboard URL already in
-the result email. **No email/Power Automate change.** `process-survey` stays
+the result email. **No email or Logic App change.** `process-survey` stays
 concerned only with analysis → dashboard → deploy; the recap is best-effort and
 never blocks it.
 

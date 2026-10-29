@@ -216,6 +216,8 @@ def _add_option_stats(q, raw_answers):
                 numbers[o] = _option_number(raw)
     numbered = sorted((o for o, n in numbers.items() if n is not None), key=lambda o: numbers[o])
     write_ins = [o for o, n in numbers.items() if n is None]
+    if not numbered:          # a form without N. prefixes: every answer is an option
+        numbered, write_ins = write_ins, []
     na = [o for o in numbers if _NA_RE.match(o)]
     picked = [{_clean_option(r) for r in opts} - {""} for opts in raw_answers]
     counted = [p - set(na) for p in picked]
@@ -226,8 +228,13 @@ def _add_option_stats(q, raw_answers):
         for o in numbered + write_ins:
             if o not in na:
                 pct[o] = whole(100 * sum(1 for p in counted if o in p) / base)
+    other = sum(1 for p in counted if p & set(write_ins))
     q["optionOrder"] = numbered + write_ins
     q["optionNumbers"] = dict(numbers)
+    # one-off "Other" answers: shown as one row, never as form options
+    q["writeIns"] = write_ins
+    q["otherCount"] = other
+    q["otherPercent"] = whole(100 * other / base) if base else 0
     q["naOptions"] = na
     q["base"] = base
     q["baseLabel"] = "devs" if any(re.search(r"not a dev", o, re.I) for o in na) else "who answered"
@@ -365,7 +372,8 @@ def build_question_catalogue(extracted):
             "qid": q["id"], "number": q["number"],
             "type": _CATALOGUE_TYPES.get(q.get("kind"), "free-text"),
             "text": q["text"], "truncated": q["truncated"],
-            "options": list(q.get("optionOrder") or []),
+            "options": [o for o in q.get("optionOrder") or [] if o not in (q.get("writeIns") or [])],
+            "hasOther": bool(q.get("writeIns")),
         } for q in items],
         "excluded": [{"text": e["text"], "kind": e["kind"]} for e in extracted["excluded"]],
     }
@@ -1198,7 +1206,7 @@ def stamp_qnums(themes, notable, standouts, tagger):
 def check_beat_numbers(story, extracted):
     """A single-question beat's headline percentages must be numbers the code
     computed for that question. Mismatches are flagged (stderr), not dropped."""
-    pct = {q["id"]: set((q.get("percentages") or {}).values())
+    pct = {q["id"]: set((q.get("percentages") or {}).values()) | {q.get("otherPercent")}
            for q in (extracted["questions"] if extracted else [])}
     checked, unmatched = 0, []
     for b in story["beats"]:

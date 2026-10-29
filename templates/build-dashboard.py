@@ -105,41 +105,8 @@ def paginated_responses(items, render_item, noun="responses"):
 
 
 # ---------------------------------------------------------------------------
-# Overview tab
+# shared sections (focus, standouts, recap, hard truths)
 # ---------------------------------------------------------------------------
-
-def render_key_metrics(metrics):
-    cards = []
-    for m in metrics or []:
-        status = m.get("status", "")
-        value_color = "text-ssw-charcoal"
-        if status == "good":
-            value_color = "text-green-600"
-        elif status in ("watch", "warning"):
-            value_color = "text-amber-600"
-        elif status in ("bad", "critical"):
-            value_color = "text-ssw-red"
-        ctx = m.get("context")
-        cards.append(
-            '<div class="bg-white rounded-xl shadow-sm ssw-card p-4">'
-            f'<p class="text-xs text-ssw-gray-500 font-semibold uppercase tracking-wide">{esc(m.get("label"))}</p>'
-            f'<p class="text-2xl font-bold {value_color} mt-1">{esc(m.get("value"))}</p>'
-            + (f'<p class="text-xs text-ssw-gray-400 mt-1">{esc(ctx)}</p>' if ctx else "")
-            + '</div>'
-        )
-    return "".join(cards)
-
-
-def render_exec_summary(bullets):
-    if not bullets:
-        return '<li class="text-ssw-gray-400">No summary available.</li>'
-    return "".join(
-        '<li class="flex items-start">'
-        '<span class="text-ssw-red mr-2 font-bold">•</span>'
-        f'<span>{esc(b)}</span></li>'
-        for b in bullets
-    )
-
 
 def render_focus_summary(focus):
     if not focus:
@@ -155,27 +122,28 @@ def render_focus_summary(focus):
     )
 
 
-def render_standouts(standouts):
+def render_standouts(standouts, photos=None):
     if not standouts:
         return ""
+    photos = photos or {}
     cards = []
     for s in standouts:
         name = s.get("name") or s.get("respondent") or "Anonymous"
         why = s.get("whyStandout") or "Notable"
-        q = s.get("question")
         resp = s.get("response") or s.get("text") or ""
         cards.append(
             '<div class="standout-card mb-4">'
-            '<div class="flex items-center gap-2 mb-2 flex-wrap">'
+            '<div class="flex items-center gap-3 mb-2 flex-wrap">'
+            f'{avatar_html(name, photos.get(name), 32)}'
             f'<span class="font-semibold text-ssw-charcoal">{esc(name)}</span>'
-            f'<span class="standout-badge">{esc(why)}</span></div>'
-            + (f'<p class="text-xs text-ssw-gray-500 mb-1">Answering: &ldquo;{esc(q)}&rdquo;</p>' if q else "")
-            + f'<blockquote class="quote-block">&ldquo;{esc(resp)}&rdquo;</blockquote>'
+            f'{qtag(s.get("qnum"))}</div>'
+            f'<p class="text-sm text-ssw-red-700 mb-2">{esc(why)}</p>'
+            f'<blockquote class="quote-block text-lg">&ldquo;{esc(resp)}&rdquo;</blockquote>'
             '</div>'
         )
     return (
         '<section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">'
-        '<h2 class="text-lg text-ssw-charcoal mb-4">Standout Responses</h2>'
+        '<h2 class="text-lg text-ssw-charcoal mb-4">Standout answers</h2>'
         + "".join(cards) + '</section>'
     )
 
@@ -219,8 +187,14 @@ def render_hard_truths(truths):
 
 
 # ---------------------------------------------------------------------------
-# Responses tab — question cards
+# question cards — the "See all answers" detail inside chapters 2 and 3
 # ---------------------------------------------------------------------------
+
+def _card_title(q):
+    if q.get("number"):
+        return f'<span class="qtag mr-2">{esc(q["number"])}</span>{esc(q.get("text", ""))}'
+    return f'Q: {esc(q.get("text", ""))}'
+
 
 def _rating_response_item(r):
     return (
@@ -295,7 +269,7 @@ def render_rating_card(q):
         'class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">'
         '<div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">'
         '<div class="flex-1">'
-        f'<p class="font-semibold text-ssw-charcoal text-sm">Q: {esc(text)}</p>'
+        f'<p class="font-semibold text-ssw-charcoal text-sm">{_card_title(q)}</p>'
         '<div class="flex items-center gap-3 mt-2 flex-wrap">'
         f'<div class="score-bar flex-1 max-w-xs"><div class="score-bar-fill {cls}" style="width: {pct:.0f}%"></div></div>'
         f'<span class="text-sm font-bold text-ssw-charcoal">{esc(mean)}/{esc(scale)}</span>'
@@ -346,7 +320,7 @@ def render_choice_card(q):
         'class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">'
         '<div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">'
         '<div class="flex-1">'
-        f'<p class="font-semibold text-ssw-charcoal text-sm">Q: {esc(text)}</p>'
+        f'<p class="font-semibold text-ssw-charcoal text-sm">{_card_title(q)}</p>'
         '<div class="flex items-center gap-3 mt-2 flex-wrap">'
         f'<span class="flag-badge">{esc(kind)}</span>'
         f'<span class="text-xs text-ssw-gray-500">Top: {esc(top)} • {len(items)} options</span>'
@@ -393,7 +367,7 @@ def render_freetext_card(q):
         'class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">'
         '<div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">'
         '<div class="flex-1">'
-        f'<p class="font-semibold text-ssw-charcoal text-sm">Q: {esc(text)}</p>'
+        f'<p class="font-semibold text-ssw-charcoal text-sm">{_card_title(q)}</p>'
         '<div class="flex items-center gap-3 mt-2">'
         '<span class="flag-badge">Free Text</span>'
         f'{badge}'
@@ -403,26 +377,8 @@ def render_freetext_card(q):
     )
 
 
-def render_question_breakdown(consolidated):
-    out = []
-    for q in consolidated.get("questionBreakdown") or []:
-        if q.get("kind") == "rating":
-            out.append(render_rating_card(q))
-        else:
-            out.append(render_choice_card(q))
-    free_text = consolidated.get("freeTextQuestions") or []
-    if free_text:
-        out.append(
-            '<div class="survey-group-header mt-6"><h3>Free-Text Questions</h3>'
-            f'<span class="survey-group-count">{len(free_text)} questions</span></div>'
-        )
-        for q in free_text:
-            out.append(render_freetext_card(q))
-    return "".join(out)
-
-
 # ---------------------------------------------------------------------------
-# Themes tab
+# themes + stance helpers
 # ---------------------------------------------------------------------------
 
 def _sentiment_class(s):
@@ -437,8 +393,8 @@ def _sentiment_class(s):
 
 
 def render_sentiment_overview(so):
-    if not so:
-        return '<p class="text-ssw-gray-300">No stance data.</p>'
+    if not so or not (so.get("spectrumLabel") or so.get("dominantStance") or so.get("keyInsight")):
+        return ""
     label = so.get("spectrumLabel") or so.get("dominantStance") or "—"
     insight = so.get("keyInsight") or ""
     dom = so.get("dominantStance") or ""
@@ -455,83 +411,6 @@ def render_sentiment_overview(so):
         + (f'<p class="text-ssw-gray-300 mt-2">{esc(insight)}</p>' if insight else "")
         + ('<div class="flex flex-wrap gap-6 mt-3 text-sm text-ssw-gray-300">' + "".join(chips) + '</div>'
            if chips else "")
-    )
-
-
-def render_theme_cards(themes):
-    cards = []
-    for t in themes or []:
-        name = t.get("name", "")
-        freq = t.get("frequency", 0)
-        pct = t.get("frequencyPercent", 0)
-        rep = t.get("representativeQuote") or {}
-        rep_name = rep.get("name") or rep.get("respondent") or ""
-        all_quotes = t.get("allQuotes") or []
-        appears = ", ".join(t.get("appearsIn") or []) or "—"
-        idx = sidx(name, rep.get("text"), rep_name, *[q.get("name") or q.get("respondent") for q in all_quotes[:8]])
-
-        quote_items = []
-        for q in all_quotes:
-            qn = q.get("name") or q.get("respondent") or ""
-            qq = q.get("question")
-            quote_items.append(
-                '<div class="response-item">'
-                + (f'<p class="people-question-label">Answering: &ldquo;{esc(qq)}&rdquo;</p>' if qq else "")
-                + f'<blockquote class="quote-block text-sm">&ldquo;{esc(q.get("text"))}&rdquo;</blockquote>'
-                + f'<p class="quote-attribution">— {esc(qn)}</p></div>'
-            )
-
-        body = (
-            '<template x-if="open"><div class="question-card-body pt-4 mt-3">'
-            '<div class="flex flex-wrap gap-3 text-xs text-ssw-gray-500 mb-3">'
-            + (f'<span>Actionability: {esc(t.get("actionability"))}</span>' if t.get("actionability") else "")
-            + f'<span>Appears in: {esc(appears)}</span></div>'
-            + f'<h4 class="text-sm font-semibold text-ssw-charcoal mb-2">All Quotes ({len(all_quotes)})</h4>'
-            + '<div class="response-list space-y-2">' + "".join(quote_items) + '</div>'
-            + '</div></template>'
-        )
-
-        cards.append(
-            f'<div x-data="{{ open: false }}" '
-            '@expand-all.window="open = true" @collapse-all.window="open = false" '
-            f'x-show="!searchQuery || \'{idx}\'.includes(searchQuery.toLowerCase())" '
-            f'class="theme-card {_sentiment_class(t.get("sentiment"))} bg-white rounded-lg p-4">'
-            '<div class="question-card-header flex items-center justify-between" @click="open = !open">'
-            '<div class="flex-1">'
-            '<div class="flex items-center gap-2 flex-wrap">'
-            f'<h3 class="font-semibold text-ssw-charcoal">{esc(name)}</h3>'
-            f'<span class="text-xs font-medium px-2 py-0.5 rounded-full bg-ssw-gray-100">{esc(freq)} responses ({esc(pct)}%)</span>'
-            '</div>'
-            + (f'<p class="quote-block text-sm mt-2">&ldquo;{esc(rep.get("text"))}&rdquo;</p>' if rep.get("text") else "")
-            + (f'<p class="quote-attribution">— {esc(rep_name)}</p>' if rep_name else "")
-            + '</div>'
-            '<span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && \'open\'">▼</span>'
-            '</div>' + body + '</div>'
-        )
-    return "".join(cards)
-
-
-def render_notable_quotes_section(quotes):
-    """Full Notable Quotes section, or "" when there are none (section omitted)."""
-    quotes = quotes or []
-    if not quotes:
-        return ""
-    out = []
-    for q in quotes:
-        nm = q.get("name") or q.get("respondent") or ""
-        theme = q.get("theme")
-        attr = f'— {esc(nm)}' + (f' <span class="text-ssw-gray-400">· {esc(theme)}</span>' if theme else "")
-        out.append(
-            '<div class="border-l-4 border-ssw-gray-300 pl-4">'
-            + (f'<p class="text-xs text-ssw-gray-500 mb-1">Answering: &ldquo;{esc(q.get("question"))}&rdquo;</p>'
-               if q.get("question") else "")
-            + f'<blockquote class="quote-block">&ldquo;{esc(q.get("text"))}&rdquo;</blockquote>'
-            + f'<p class="quote-attribution">{attr}</p></div>'
-        )
-    return (
-        '<section class="mt-6 bg-white rounded-xl shadow-sm ssw-card p-6">'
-        '<h2 class="text-lg text-ssw-charcoal mb-4">Notable Quotes</h2>'
-        '<div class="space-y-4">' + "".join(out) + '</div></section>'
     )
 
 
@@ -607,7 +486,7 @@ def render_people_cards(people):
 
 
 # ---------------------------------------------------------------------------
-# Insights tab
+# What's next — signals, gaps, actions
 # ---------------------------------------------------------------------------
 
 _SEV = {"critical": "severity-critical", "high": "severity-high",
@@ -692,13 +571,6 @@ def render_recommendations(recs):
 # ---------------------------------------------------------------------------
 
 def render_chart_scripts(consolidated):
-    ratings = [q for q in (consolidated.get("questionBreakdown") or [])
-               if q.get("kind") == "rating" and q.get("mean") is not None]
-    ratings.sort(key=lambda q: q.get("mean"))
-    labels = [(q.get("text") or "")[:48] for q in ratings]
-    means = [q.get("mean") for q in ratings]
-    colors = ["#059669" if m >= 4 else "#F59E0B" if m >= 3 else "#CC4141" for m in means]
-
     so = consolidated.get("sentimentOverview") or {}
     breakdown = so.get("emotionalBreakdown") or {}
     stance_order = ["enthusiasm", "pragmatism", "curiosity", "skepticism", "frustration", "indifference"]
@@ -706,30 +578,6 @@ def render_chart_scripts(consolidated):
     radar_values = [breakdown.get(s, 0) or 0 for s in stance_order]
 
     return f"""
-        const _scoreData = {{
-            labels: {json.dumps(labels)},
-            datasets: [{{
-                label: 'Mean score',
-                data: {json.dumps(means)},
-                backgroundColor: {json.dumps(colors)},
-                borderRadius: 4
-            }}]
-        }};
-        const _sdEl = document.getElementById('scoreDistributionChart');
-        if (_sdEl && _scoreData.labels.length) {{
-            new Chart(_sdEl, {{
-                type: 'bar',
-                data: _scoreData,
-                options: {{
-                    indexAxis: 'y',
-                    plugins: {{ legend: {{ display: false }} }},
-                    scales: {{ x: {{ beginAtZero: true, max: 5 }} }},
-                    responsive: true,
-                    maintainAspectRatio: true
-                }}
-            }});
-        }}
-
         const _radarEl = document.getElementById('emotionalRadarChart');
         const _radarData = {json.dumps(radar_values)};
         if (_radarEl && _radarData.some(v => v > 0)) {{
@@ -864,8 +712,9 @@ def _catalogue_from_legacy(c):
         items.append({"number": q.get("number"), "type": q.get("kind") or "single-select",
                       "text": q.get("text", ""), "summary": "", "truncated": False,
                       "options": [] if q.get("kind") == "rating"
-                                 else list(q.get("optionOrder") or (q.get("distribution") or {}).keys()),
-                      "missingOptions": []})
+                                 else [o for o in q.get("optionOrder") or (q.get("distribution") or {}).keys()
+                                       if o not in (q.get("writeIns") or [])],
+                      "hasOther": bool(q.get("writeIns")), "missingOptions": []})
     for q in c.get("freeTextQuestions") or []:
         items.append({"number": q.get("number"), "type": "free-text", "text": q.get("text", ""),
                       "summary": "", "truncated": False, "options": [], "missingOptions": []})
@@ -902,6 +751,8 @@ def _question_row(q):
         if not q.get("summary"):
             text = text + "…"
     opts = [f'<span class="opt-chip">{esc(o)}</span>' for o in q.get("options") or []]
+    if q.get("hasOther"):
+        opts.append('<span class="opt-chip opt-chip--deduced">Other (write-in)</span>')
     opts += [f'<span class="opt-chip opt-chip--deduced">{esc(o)} (deduced)</span>'
              for o in q.get("missingOptions") or []]
     return (
@@ -954,6 +805,274 @@ def render_topic_chapter(c, out_path):
 
 
 # ---------------------------------------------------------------------------
+# Chapters 2–5 — beats, themes, hot takes, what's next
+# ---------------------------------------------------------------------------
+
+def _quote_html(q, photos, size="text-base"):
+    name = q.get("name") or q.get("respondent") or ""
+    return (
+        '<div class="flex items-start gap-3">'
+        f'{avatar_html(name, photos.get(name), 36)}'
+        '<div class="flex-1 min-w-0">'
+        f'<blockquote class="quote-block {size}">&ldquo;{esc(q.get("text"))}&rdquo;</blockquote>'
+        f'<p class="quote-attribution flex items-center gap-2">— {esc(name)} {qtag(q.get("qnum"))}</p>'
+        '</div></div>'
+    )
+
+
+def _bar_rows(rows):
+    """rows: [(label, pct, detail)] -> horizontal bars, readable in a video frame."""
+    out = []
+    for label, pct, detail in rows:
+        out.append(
+            '<div class="beat-bar">'
+            '<div class="flex items-baseline justify-between gap-3 text-sm text-ssw-charcoal mb-1">'
+            f'<span>{esc(label)}</span><span class="font-semibold whitespace-nowrap">{esc(detail)}</span></div>'
+            f'<div class="score-bar"><div class="score-bar-fill bg-ssw-red" style="width:{pct}%"></div></div>'
+            '</div>'
+        )
+    return '<div class="space-y-2.5">' + "".join(out) + '</div>'
+
+
+def render_beat_chart(q):
+    """The one chart a beat carries: option shares on the N/A-free base, or a
+    rating's spread. Empty for free text and all-N/A questions."""
+    if not q:
+        return ""
+    dist = q.get("distribution") or {}
+    if q.get("kind") == "rating":
+        n = q.get("responseCount") or sum(dist.values()) or 0
+        scale = int(q.get("scaleMax") or 5)
+        if not n:
+            return ""
+        rows = [(f"{k} / {scale}", int(round(100 * (dist.get(str(k), 0) or 0) / n)),
+                 f"{dist.get(str(k), 0) or 0} of {n}") for k in range(scale, 0, -1)]
+        return (f'<p class="text-sm text-ssw-gray-500 mb-3">Average {esc(q.get("mean"))}/{scale} '
+                f'from {n} ratings</p>' + _bar_rows(rows))
+    pct = q.get("percentages")
+    if pct is None:   # older consolidated.json: share of everyone who answered
+        rc = q.get("responseCount") or 0
+        pct = {o: int(round(100 * c / rc)) for o, c in dist.items()} if rc else {}
+        base, label, order = rc, "who answered", list(dist.keys())
+    else:
+        base, label = q.get("base") or 0, q.get("baseLabel") or "who answered"
+        write_ins = set(q.get("writeIns") or [])
+        order = [o for o in (q.get("optionOrder") or pct.keys()) if o in pct and o not in write_ins]
+    if not base or not pct:
+        return ""
+    rows = [(o, pct[o], f"{pct[o]}% · {dist.get(o, 0)} of {base}") for o in order]
+    if q.get("otherCount"):
+        rows.append(("Other (write-in)", q.get("otherPercent") or 0,
+                     f"{q.get('otherPercent') or 0}% · {q['otherCount']} of {base}"))
+    na = sum(dist.get(o, 0) for o in q.get("naOptions") or [])
+    foot = f"Share of {base} {label}" + (f" ({na} N/A left out)" if na else "")
+    return _bar_rows(rows) + f'<p class="text-xs text-ssw-gray-500 mt-2">{esc(foot)}</p>'
+
+
+def _question_card(q):
+    if "responses" in q and "kind" not in q:
+        return render_freetext_card(q)
+    return render_rating_card(q) if q.get("kind") == "rating" else render_choice_card(q)
+
+
+def _see_all(cards, label="See all answers"):
+    if not cards:
+        return ""
+    return (
+        '<div x-data="{ open: false }" @expand-all.window="open = true" @collapse-all.window="open = false" class="mt-5">'
+        f'<button class="show-more-btn" @click="open = !open" x-text="open ? \'Hide answers\' : \'{esc(label)}\'"></button>'
+        f'<div x-show="open" x-cloak class="space-y-3 mt-3">{"".join(cards)}</div></div>'
+    )
+
+
+def render_beat(beat, qmap, photos, quiet=False):
+    qs = [qmap[i] for i in beat.get("qids") or [] if i in qmap]
+    tags = "".join(qtag(q.get("number")) for q in qs)
+    quotes = (beat.get("quotes") or [])[:2]
+    size = "text-xl" if not quiet else "text-lg"
+    return (
+        f'<article class="ssw-card beat p-6 mb-6{" beat--quiet" if quiet else ""}">'
+        f'<div class="flex items-center gap-2 mb-2">{tags}</div>'
+        f'<h3 class="{size} font-bold text-ssw-charcoal mb-4">{esc(beat.get("headline"))}</h3>'
+        + (f'<div class="max-w-2xl">{render_beat_chart(qs[0])}</div>' if qs else "")
+        + (f'<div class="space-y-4 mt-5">{"".join(_quote_html(q, photos) for q in quotes)}</div>' if quotes else "")
+        + _see_all([_question_card(q) for q in qs])
+        + '</article>'
+    )
+
+
+_CONTENT_RATING_RE = re.compile(r"^\W*(\(optional\)\s*)?(read the rule|watch this video)|\bvideo\b", re.I)
+
+
+def _is_content_rating(q):
+    return q.get("kind") == "rating" and bool(_CONTENT_RATING_RE.search(q.get("text", "")))
+
+
+def render_content_ratings(qs):
+    """The rule + video ratings: last in Chapter 2, small and quiet."""
+    if not qs:
+        return ""
+    rows = []
+    for q in qs:
+        mean, scale = q.get("mean"), q.get("scaleMax") or 5
+        pct = (float(mean) / scale * 100) if mean else 0
+        rows.append(
+            '<div class="flex items-center gap-3 py-2">'
+            f'{qtag(q.get("number"))}'
+            f'<span class="flex-1 text-sm text-ssw-charcoal">{esc(_short_label(q.get("text", ""), 70))}</span>'
+            f'<div class="score-bar w-40"><div class="score-bar-fill {score_class(pct)}" style="width:{pct:.0f}%"></div></div>'
+            f'<span class="text-sm font-semibold text-ssw-charcoal w-12 text-right">{esc(mean)}/{esc(scale)}</span></div>'
+        )
+    return (
+        '<article class="ssw-card beat--quiet p-6 mb-6">'
+        '<h3 class="text-base font-semibold text-ssw-gray-600 mb-2">How the rule and video landed</h3>'
+        + "".join(rows) + _see_all([_question_card(q) for q in qs]) + '</article>'
+    )
+
+
+def render_stance(so):
+    banner = render_sentiment_overview(so)
+    if not banner:
+        return ""
+    return (
+        '<section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">'
+        f'<h2 class="text-lg font-bold mb-2">Where the team stands</h2>{banner}</section>'
+        '<section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">'
+        '<h2 class="text-lg text-ssw-charcoal mb-4">Stance profile</h2>'
+        '<div class="radar-chart-container"><canvas id="emotionalRadarChart"></canvas></div></section>'
+    )
+
+
+def _chapter_heading(cid, intro=""):
+    return (
+        '<header class="mb-6">'
+        f'<h2 class="text-3xl text-ssw-charcoal">{esc(CHAPTER_NAMES[cid])}</h2>'
+        + (f'<p class="text-ssw-gray-500 mt-1">{esc(intro)}</p>' if intro else "")
+        + '</header>'
+    )
+
+
+def render_team_chapter(c):
+    photos = c.get("photos") or {}
+    questions = c.get("questionBreakdown") or []
+    qmap = {q.get("id"): q for q in questions + (c.get("freeTextQuestions") or [])}
+    content = [q for q in questions if _is_content_rating(q)]
+    content_ids = {q.get("id") for q in content}
+    beats = [b for b in (c.get("story") or {}).get("beats") or []
+             if any(i not in content_ids for i in b.get("qids") or [])]
+    covered = {i for b in beats for i in b.get("qids") or []}
+    # every structured question stays reachable: one beat each for those no
+    # story beat covers (an older consolidated.json has no story at all)
+    beats += [{"headline": q.get("insight") or q.get("commentary") or q.get("text"), "qids": [q.get("id")],
+               "quotes": []}
+              for q in questions if q.get("id") not in covered and q.get("id") not in content_ids]
+    return (
+        _chapter_heading("team", "The structured answers, biggest finding first.")
+        + render_focus_summary(c.get("focusSummary"))
+        + "".join(render_beat(b, qmap, photos) for b in beats)
+        + render_content_ratings(content)
+        + render_stance(c.get("sentimentOverview"))
+    )
+
+
+def render_theme_block(t, photos):
+    quotes = t.get("allQuotes") or []
+    head, rest = quotes[:3], quotes[3:]
+    names = list(dict.fromkeys(q.get("name") or q.get("respondent") for q in quotes if q.get("name") or q.get("respondent")))
+    qnums = sorted({q.get("qnum") for q in quotes if q.get("qnum")}, key=lambda n: int(n[1:]))
+    faces = "".join(avatar_html(n, photos.get(n), 28) for n in names)
+    more = (
+        '<div x-data="{ open: false }" @expand-all.window="open = true" @collapse-all.window="open = false">'
+        f'<button class="show-more-btn mt-4" @click="open = !open" x-text="open ? \'Show fewer\' : \'+{len(rest)} more\'"></button>'
+        f'<div x-show="open" x-cloak class="space-y-4 mt-4">{"".join(_quote_html(q, photos) for q in rest)}</div></div>'
+    ) if rest else ""
+    return (
+        f'<article class="ssw-card theme-card {_sentiment_class(t.get("sentiment"))} p-6 mb-6">'
+        '<div class="flex items-center gap-2 flex-wrap mb-1">'
+        f'{"".join(qtag(n) for n in qnums)}'
+        f'<span class="text-xs text-ssw-gray-500">{len(names)} people</span></div>'
+        f'<h3 class="text-xl font-bold text-ssw-charcoal mb-4">{esc(t.get("name"))}</h3>'
+        f'<div class="space-y-4">{"".join(_quote_html(q, photos) for q in head)}</div>'
+        + (f'<div class="faces-row mt-5">{faces}</div>' if len(names) > 1 else "")
+        + more + '</article>'
+    )
+
+
+def render_words_chapter(c):
+    photos = c.get("photos") or {}
+    free = c.get("freeTextQuestions") or []
+    return (
+        _chapter_heading("words", "What people wrote, grouped by theme.")
+        + "".join(render_theme_block(t, photos) for t in c.get("themes") or [])
+        + (('<section class="ssw-card p-6 mb-6">'
+            '<h2 class="text-lg text-ssw-charcoal mb-1">See all answers</h2>'
+            '<p class="text-sm text-ssw-gray-500 mb-4">Every free-text answer, with the most insightful first.</p>'
+            f'<div class="space-y-3">{"".join(render_freetext_card(q) for q in free)}</div></section>') if free else "")
+    )
+
+
+def render_debate(d, qmap, photos):
+    sides = d.get("sides") or []
+    tags = "".join(qtag(qmap[i].get("number")) for i in d.get("qids") or [] if i in qmap)
+    cols = "md:grid-cols-3" if len(sides) >= 3 else "md:grid-cols-2"
+    side_html = "".join(
+        '<div class="debate-side">'
+        f'<p class="text-sm font-bold uppercase tracking-wide text-ssw-red mb-3">{esc(s.get("label"))}</p>'
+        f'<div class="space-y-4">{"".join(_quote_html(q, photos) for q in s.get("quotes") or [])}</div></div>'
+        for s in sides
+    )
+    return (
+        '<article class="ssw-card p-6 mb-6">'
+        f'<div class="flex items-center gap-2 mb-2">{tags}</div>'
+        f'<h3 class="text-xl font-bold text-ssw-charcoal mb-5">{esc(d.get("question"))}</h3>'
+        f'<div class="grid grid-cols-1 {cols} gap-6">{side_html}</div></article>'
+    )
+
+
+def render_takes_chapter(c):
+    photos = c.get("photos") or {}
+    qmap = {q.get("id"): q for q in (c.get("questionBreakdown") or []) + (c.get("freeTextQuestions") or [])}
+    return (
+        _chapter_heading("takes", "Where the team disagreed, and the answers that stood out.")
+        + "".join(render_debate(d, qmap, photos) for d in (c.get("story") or {}).get("debates") or [])
+        + render_standouts(c.get("standoutResponses"), photos)
+    )
+
+
+def render_verdict(c):
+    verdict = (c.get("executiveSummary") or {}).get("overallVerdict")
+    grade = c.get("overallGrade")
+    if not (verdict or grade):
+        return ""
+    return (
+        '<section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-ds shadow-lg p-6 text-white mb-6">'
+        '<div class="flex items-center justify-between gap-6">'
+        f'<div><h2 class="text-lg font-bold">The verdict</h2><p class="text-ssw-gray-300 mt-1 text-lg">{esc(verdict)}</p></div>'
+        f'<div class="text-5xl font-bold">{esc(grade)}</div></div></section>'
+    )
+
+
+def render_next_chapter(c):
+    # consolidation lists each adoption gap as a signal too; show it once
+    gaps = {str(g.get("gap") or "").strip().lower() for g in c.get("adoptionGaps") or []}
+    signals = [f for f in c.get("redFlags") or [] if str(f.get("flag") or "").strip().lower() not in gaps]
+    return (
+        _chapter_heading("next", "What SSW should notice, and do, about this topic.")
+        + render_hard_truths(c.get("hardTruths"))
+        + '<section class="mb-6 bg-ssw-red-50 border-2 border-ssw-red border-dashed rounded-xl p-6">'
+        '<h2 class="text-lg text-ssw-red font-bold mb-4">Signals to notice</h2>'
+        f'{render_red_flags(signals)}</section>'
+        '<section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">'
+        '<h2 class="text-lg text-ssw-charcoal mb-4">Adoption gaps</h2>'
+        f'{render_adoption_gaps(c.get("adoptionGaps"))}</section>'
+        '<section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">'
+        '<h2 class="text-lg text-ssw-charcoal mb-4">Actions</h2>'
+        f'{render_recommendations(c.get("recommendations"))}</section>'
+        + render_verdict(c)
+    )
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 
@@ -969,52 +1088,34 @@ def main():
         tpl = f.read()
 
     meta = c.get("metadata") or {}
-    exec_sum = c.get("executiveSummary") or {}
     present = chapters_present(c)
     bodies = {
-        "topic": render_topic_chapter(c, out_path),
-        "team": "",
-        "words": "",
-        "takes": "",
-        "next": "",
+        "topic": lambda: render_topic_chapter(c, out_path),
+        "team": lambda: render_team_chapter(c),
+        "words": lambda: render_words_chapter(c),
+        "takes": lambda: render_takes_chapter(c),
+        "next": lambda: render_next_chapter(c),
     }
 
     replacements = {
         "{{CHAPTER_IDS}}": json.dumps(present + ["people"]),
         "{{CHAPTER_NAV}}": render_chapter_nav(present),
         "{{CHAPTER_TABS}}": render_chapter_tabs(present),
-        "{{CHAPTER_SECTIONS}}": "".join(_chapter_section(cid, present, bodies[cid]) for cid in present),
+        "{{CHAPTER_SECTIONS}}": "".join(_chapter_section(cid, present, bodies[cid]()) for cid in present),
         "{{SSW_LOGO}}": logo_data_uri(),
         "{{SURVEY_NAME}}": esc(meta.get("surveyName") or meta.get("topic") or "Survey"),
         "{{DATE}}": esc(meta.get("dateRange") or ""),
         "{{RESPONSE_COUNT}}": esc(meta.get("responseCount") or 0),
         "{{COMPLETION_RATE}}": esc(meta.get("completionRate") or 100),
-        "{{PER_SURVEY_COUNTS}}": "",
-        "{{SURVEY_GROUP_HEADER}}": "",
-        "{{KEY_METRICS_CARDS}}": render_key_metrics(c.get("keyMetrics")),
-        "{{EXECUTIVE_SUMMARY}}": render_exec_summary(exec_sum.get("bullets")),
-        "{{OVERALL_VERDICT}}": esc(exec_sum.get("overallVerdict")),
-        "{{OVERALL_GRADE}}": esc(c.get("overallGrade") or ""),
-        "{{RECAP_VIDEO}}": render_recap_video(out_path),
-        "{{FOCUS_SUMMARY}}": render_focus_summary(c.get("focusSummary")),
-        "{{STANDOUT_RESPONSES}}": render_standouts(c.get("standoutResponses")),
-        "{{HARD_TRUTHS_SECTION}}": render_hard_truths(c.get("hardTruths")),
-        "{{QUESTION_BREAKDOWN}}": render_question_breakdown(c),
-        "{{SENTIMENT_OVERVIEW}}": render_sentiment_overview(c.get("sentimentOverview")),
-        "{{THEME_CARDS}}": render_theme_cards(c.get("themes")),
         "{{PEOPLE_CARDS}}": render_people_cards(c.get("people")),
-        "{{RED_FLAGS}}": render_red_flags(c.get("redFlags")),
-        "{{RISK_RADAR}}": render_adoption_gaps(c.get("adoptionGaps")),
-        "{{RECOMMENDATIONS}}": render_recommendations(c.get("recommendations")),
         "{{CHART_SCRIPTS}}": render_chart_scripts(c),
         "{{GENERATED_AT}}": esc(f"Generated from {meta.get('responseCount', 0)} responses"),
     }
 
-    for ph, val in replacements.items():
-        tpl = tpl.replace(ph, val if isinstance(val, str) else str(val))
-
-    # scrub any placeholder we did not explicitly fill
-    tpl = re.sub(r"\{\{[A-Z_]+\}\}", "", tpl)
+    # One pass over the TEMPLATE's placeholders: text inside the inserted
+    # content (an agent headline containing "{{THEME_CARDS}}") is never
+    # expanded or scrubbed. Unknown template placeholders become "".
+    tpl = re.sub(r"\{\{[A-Z_]+\}\}", lambda m: replacements.get(m.group(0), ""), tpl)
 
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(tpl)

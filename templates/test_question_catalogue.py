@@ -90,8 +90,13 @@ def test_option_order_uses_prefix_then_write_ins(ex):
     assert q["optionOrder"] == ["Daily", "Weekly", "N/A - I'm not a dev", "as needed"], q["optionOrder"]
     assert q["optionNumbers"] == {"Daily": 1, "Weekly": 2, "N/A - I'm not a dev": 8, "as needed": None}
     assert q["naOptions"] == ["N/A - I'm not a dev"]
+    # write-ins (no N. prefix) are one-off "Other" answers, not form options
+    assert q["writeIns"] == ["as needed"]
+    assert q["otherCount"] == 1 and q["otherPercent"] == 17, (q["otherCount"], q["otherPercent"])
     cat = bc.build_question_catalogue(ex)
-    assert cat["questions"][1]["options"] == q["optionOrder"]
+    assert cat["questions"][1]["options"] == ["Daily", "Weekly", "N/A - I'm not a dev"]
+    assert cat["questions"][1]["hasOther"] is True
+    assert cat["questions"][2]["hasOther"] is False
 
 
 def test_percentages_exclude_na(ex):

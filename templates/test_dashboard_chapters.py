@@ -199,8 +199,104 @@ def test_no_responses_or_overview_tab(html):
     assert "activeTab === 'overview'" not in html
 
 
+def test_write_ins_grouped_as_other():
+    c = copy.deepcopy(FIXTURE)
+    q2 = c["questionBreakdown"][1]
+    q2["distribution"]["My agents update them automatically"] = 1
+    q2["optionOrder"].append("My agents update them automatically")
+    q2["writeIns"] = ["My agents update them automatically"]
+    q2["otherCount"], q2["otherPercent"] = 1, 3
+    q2["percentages"]["My agents update them automatically"] = 3
+    c["context"]["questions"][1]["hasOther"] = True
+    html = render(c)
+    t = chapter(html, "team")
+    assert "Other (write-in)" in t and "3% · 1 of 30" in t
+    assert t.count("My agents update them automatically") == 1   # only in See all answers
+    assert "Other (write-in)" in chapter(html, "topic")
+
+
+def test_adoption_gap_not_repeated_in_signals():
+    c = copy.deepcopy(FIXTURE)
+    c["redFlags"].append({"flag": "Few retros", "severity": "moderate", "evidence": "Only 10%"})
+    n = chapter(render(c), "next")
+    assert n.count("Few retros") == 1, n.count("Few retros")
+
+
+def test_beat_shows_headline_tag_and_base(html):
+    t = chapter(html, "team")
+    assert "77% of devs fix the config, not the chat" in t
+    assert ">Q4<" in t
+    assert "of 41 devs" in t
+    assert "I fixed it at the root." in t
+
+
+def legacy_consolidated_falls_back_to_question_beats():
+    t = chapter(render(without(story=None, context=None)), "team")
+    for insight in ("Weekly tinkering is the norm.", "Root-cause fixing dominates.",
+                    "Task value was middling.", "Rule landed well."):
+        assert insight in t, insight
+
+
+def test_questions_without_a_beat_stay_reachable(html):
+    # q3 (task value) has no story beat; its data must still be in Chapter 2
+    assert "Task value was middling." in chapter(html, "team")
+
+
+def test_rule_and_video_ratings_come_last(html):
+    t = chapter(html, "team")
+    rule = t.find("Read the rule and give it a rating")
+    assert rule > 0
+    for h in ("77% of devs fix the config", "Most update weekly", "Task value was middling."):
+        assert 0 <= t.find(h) < rule, h
+
+
+def test_theme_shows_three_quotes_and_more(html):
+    w = chapter(html, "words")
+    assert "Fix it at the root" in w and "+2 more" in w
+    assert ">Q5<" in w
+    assert "What did you change?" in w           # see-all free-text card
+
+
+def test_debate_sides_render(html):
+    t = chapter(html, "takes")
+    for s in ("Should an agent edit its own config?", "Let it propose", "Too risky",
+              "Propose only.", "Sounds risky.", "Removed stale rules.", "Contrarian"):
+        assert s in t, s
+
+
+def test_verdict_is_in_whats_next(html):
+    n = chapter(html, "next")
+    assert n.find("Hard Truths") < n.find("Share the top fixes") < n.find("Strong uptake, thin follow-through.")
+    assert ">B<" in n
+
+
+def headline_markup_is_escaped():
+    c = copy.deepcopy(FIXTURE)
+    c["story"]["beats"][0]["headline"] = "<script>x</script>{{THEME_CARDS}}"
+    html = render(c)
+    assert "<script>x</script>" not in html
+    assert "&lt;script&gt;x&lt;/script&gt;{{THEME_CARDS}}" in html
+
+
+def test_no_email_addresses(html):
+    # a domain starts with a letter (so the "alpinejs@3.x.x" CDN URL isn't one)
+    found = re.findall(r"[\w.+-]+@[A-Za-z][\w-]*(?:\.[A-Za-z][\w-]*)+", html)
+    assert not found, found[:3]
+
+
 def main():
     html = render(FIXTURE)
+    test_beat_shows_headline_tag_and_base(html)
+    test_questions_without_a_beat_stay_reachable(html)
+    test_rule_and_video_ratings_come_last(html)
+    test_theme_shows_three_quotes_and_more(html)
+    test_debate_sides_render(html)
+    test_verdict_is_in_whats_next(html)
+    test_no_email_addresses(html)
+    legacy_consolidated_falls_back_to_question_beats()
+    headline_markup_is_escaped()
+    test_write_ins_grouped_as_other()
+    test_adoption_gap_not_repeated_in_signals()
     test_nav_order_and_people_last(html)
     test_next_buttons_chain(html)
     test_topic_lists_questions_with_numbers_and_options(html)

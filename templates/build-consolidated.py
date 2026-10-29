@@ -139,6 +139,15 @@ def round1(x):
 # code. The analysis agents only contribute synthesis (themes, insights,
 # commentary), and any quote text they reference is verified by QuoteGrounder.
 
+# The CTF process seeds each week's workbook with a dummy answer
+# ("TEST RESPONSE - created to generate the Excel workbook - delete me").
+_TEST_ROW_RE = re.compile(r"\btest response\b", re.I)
+
+
+def _is_test_row(row):
+    return any(_TEST_ROW_RE.search(v) for v in row.values())
+
+
 def load_rows(path):
     """Read a survey export (CSV or XLSX) -> list of {header: str-value} rows."""
     if path.lower().endswith((".xlsx", ".xls")):
@@ -146,15 +155,17 @@ def load_rows(path):
         ws = openpyxl.load_workbook(path, read_only=True, data_only=True).active
         vals = ws.iter_rows(values_only=True)
         headers = [re.sub(r"\s+", " ", str(h or "")).strip() for h in next(vals)]
-        return [
+        rows = [
             {h: ("" if v is None else str(v).strip()) for h, v in zip(headers, row)}
             for row in vals if any(v is not None and str(v).strip() for v in row)
         ]
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        return [
-            {re.sub(r"\s+", " ", k or "").strip(): str(v or "").strip() for k, v in row.items()}
-            for row in csv.DictReader(f)
-        ]
+    else:
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            rows = [
+                {re.sub(r"\s+", " ", k or "").strip(): str(v or "").strip() for k, v in row.items()}
+                for row in csv.DictReader(f)
+            ]
+    return [r for r in rows if not _is_test_row(r)]
 
 
 _META_RE = re.compile(r"^(id|start time|completion time|last modified.*|email.*|name)$", re.I)

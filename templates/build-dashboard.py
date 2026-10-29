@@ -17,6 +17,7 @@ The card markup matches the patterns documented inline in the template
 """
 
 import base64
+import copy
 import datetime
 import html
 import json
@@ -290,17 +291,32 @@ def render_choice_card(q):
     mx = items[0][1] if items else 0
     idx = sidx(text, kind, q.get("insight"), *[k for k, _ in items])
 
+    # same base as the beat chart: N/A answers are counted but left out of the %
+    na_opts = set(q.get("naOptions") or [])
+    has_base = q.get("percentages") is not None
+    base = q.get("base") or 0 if has_base else rc
     bars = []
     for opt, cnt in items:
         w = int(cnt / mx * 100) if mx else 0
-        pctv = int(cnt / rc * 100) if rc else 0
+        if has_base and opt in na_opts:
+            share = "left out"
+        elif has_base:
+            share = f"{int(round(100 * cnt / base)) if base else 0}%"
+        else:
+            share = f"{int(cnt / rc * 100) if rc else 0}%"
         bars.append(
             '<div class="mb-2">'
             '<div class="flex items-center justify-between text-xs text-ssw-charcoal mb-0.5">'
-            f'<span>{esc(opt)}</span><span class="font-semibold">{cnt} ({pctv}%)</span></div>'
+            f'<span>{esc(opt)}</span><span class="font-semibold">{cnt} ({share})</span></div>'
             f'<div class="score-bar"><div class="score-bar-fill score-medium" style="width: {w}%"></div></div>'
             '</div>'
         )
+    na = sum(dist.get(o, 0) for o in na_opts)
+    if has_base:
+        foot = f"Share of {base} {q.get('baseLabel') or 'who answered'}" + (f" ({na} N/A left out)" if na else "")
+    else:
+        foot = f"Share of all {rc} who answered"
+    bars.append(f'<p class="text-xs text-ssw-gray-500 mt-2">{esc(foot)}</p>')
 
     body = (
         '<template x-if="open"><div class="question-card-body p-4">'
@@ -725,7 +741,7 @@ def _catalogue_from_legacy(c):
 
 
 def _short_label(text, limit=60):
-    t = re.sub(r"^[^\w(]+", "", str(text)).strip()
+    t = re.sub(r"^[^\w(]+|^\d+\.\s*", "", str(text)).strip()
     t = re.split(r"(?<=\?)\s|\s\(|\s-\s|\.\s", t)[0]
     return t if len(t) <= limit else t[:limit].rsplit(" ", 1)[0] + "…"
 
@@ -784,7 +800,9 @@ def render_topic_chapter(c, out_path):
     if task.get("title") or task.get("summary"):
         boxes.append(_context_box("The task", task.get("title") or "This week's task", task.get("summary")))
 
-    excluded = ctx.get("excluded") or [{"text": e.get("text", "")} for e in c.get("excludedQuestions") or []]
+    # older runs stored excludedQuestions as plain header strings
+    excluded = ctx.get("excluded") or [{"text": e if isinstance(e, str) else e.get("text", "")}
+                                       for e in c.get("excludedQuestions") or []]
     left_out = "; ".join(_short_label(e.get("text", "")) for e in excluded if e.get("text"))
 
     return (
@@ -901,6 +919,23 @@ def render_beat(beat, qmap, photos, quiet=False):
     )
 
 
+def render_all_na(questions):
+    """Questions everyone answered N/A: no headline to tell, but the answers
+    stay one click away."""
+    if not questions:
+        return ""
+    rows = "".join(
+        f'<li class="flex items-center gap-2">{qtag(q.get("number"))}'
+        f'<span>{esc(_short_label(q.get("text", ""), 90))}</span></li>' for q in questions)
+    return (
+        '<article class="ssw-card beat beat--quiet p-6 mb-6">'
+        '<h3 class="text-lg font-bold text-ssw-charcoal mb-3">Everyone answered N/A</h3>'
+        f'<ul class="text-sm text-ssw-gray-600 space-y-1">{rows}</ul>'
+        + _see_all([_question_card(q) for q in questions])
+        + '</article>'
+    )
+
+
 _CONTENT_RATING_RE = re.compile(r"^\W*(\(optional\)\s*)?(read the rule|watch this video)|\bvideo\b", re.I)
 
 
@@ -963,22 +998,59 @@ def render_team_chapter(c):
     covered = {i for b in beats for i in b.get("qids") or []}
     # every structured question stays reachable: one beat each for those no
     # story beat covers (an older consolidated.json has no story at all)
+    uncovered = [q for q in questions if q.get("id") not in covered and q.get("id") not in content_ids]
+    all_na = [q for q in uncovered if q.get("percentages") is not None and not q.get("base")]
     beats += [{"headline": q.get("insight") or q.get("commentary") or q.get("text"), "qids": [q.get("id")],
                "quotes": []}
-              for q in questions if q.get("id") not in covered and q.get("id") not in content_ids]
+              for q in uncovered if q not in all_na]
     return (
         _chapter_heading("team", "The structured answers, biggest finding first.")
         + render_focus_summary(c.get("focusSummary"))
         + "".join(render_beat(b, qmap, photos) for b in beats)
+        + render_all_na(all_na)
         + render_content_ratings(content)
         + render_stance(c.get("sentimentOverview"))
     )
 
 
+def _quote_key(q):
+    name = q.get("name") or q.get("respondent") or ""
+    text = q.get("text") or q.get("response") or ""
+    return name.strip().lower(), re.sub(r"\W+", " ", text).strip().lower()
+
+
+def dedupe_story_quotes(c):
+    """Each quote shows in one chapter only. Debates keep theirs (a side needs
+    its quotes); beats, then themes, then standouts skip any already shown.
+    Returns a copy; a theme keeps its people count and faces."""
+    c = copy.deepcopy(c)
+    seen = set()
+
+    def fresh(quotes):
+        out = [q for q in quotes or [] if isinstance(q, dict) and _quote_key(q) not in seen]
+        seen.update(_quote_key(q) for q in out)
+        return out
+
+    story = c.get("story") or {}
+    for d in story.get("debates") or []:
+        for side in d.get("sides") or []:
+            fresh(side.get("quotes"))
+    for b in story.get("beats") or []:
+        b["quotes"] = fresh(b.get("quotes"))
+    for t in c.get("themes") or []:
+        quotes = t.get("allQuotes") or []
+        t["quotedBy"] = list(dict.fromkeys(n for n in (q.get("name") or q.get("respondent") for q in quotes) if n))
+        t["allQuotes"] = fresh(quotes)
+    if c.get("standoutResponses"):
+        c["standoutResponses"] = fresh(c["standoutResponses"])
+    return c
+
+
 def render_theme_block(t, photos):
     quotes = t.get("allQuotes") or []
     head, rest = quotes[:3], quotes[3:]
-    names = list(dict.fromkeys(q.get("name") or q.get("respondent") for q in quotes if q.get("name") or q.get("respondent")))
+    names = t.get("quotedBy") or list(dict.fromkeys(
+        q.get("name") or q.get("respondent") for q in quotes if q.get("name") or q.get("respondent")))
     qnums = sorted({q.get("qnum") for q in quotes if q.get("qnum")}, key=lambda n: int(n[1:]))
     faces = "".join(avatar_html(n, photos.get(n), 28) for n in names)
     more = (
@@ -1087,6 +1159,7 @@ def main():
     with open(template_path, "r", encoding="utf-8") as f:
         tpl = f.read()
 
+    c = dedupe_story_quotes(c)
     meta = c.get("metadata") or {}
     present = chapters_present(c)
     bodies = {

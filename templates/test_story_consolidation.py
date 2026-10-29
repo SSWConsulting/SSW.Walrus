@@ -66,6 +66,10 @@ QUAL = {
         ],
     }],
     "notableQuotes": [{"name": "Bob Jones", "text": "It kept using the wrong package manager for a week.",
+                       "question": "Any war stories?"},
+                      # spliced across Bob's two answers, labelled with one of them
+                      {"name": "Bob Jones", "text": "Nothing yet, I still correct it in chat every time. "
+                                                    "It kept using the wrong package manager for a week.",
                        "question": "Any war stories?"}],
     "standoutResponses": [{"name": "Eve Park", "response": "I would let it propose changes but never apply them.",
                            "question": "Any war stories?", "whyStandout": "Nuanced"}],
@@ -180,6 +184,11 @@ def unlocatable_quote_is_dropped_and_reported(c):
     assert c["consolidationNotes"]["untaggedDropped"] >= 1
 
 
+def spliced_quote_with_question_label_is_dropped(c):
+    texts = [q["text"] for q in c["notableQuotes"]]
+    assert texts == ["It kept using the wrong package manager for a week."], texts
+
+
 def test_beat_with_unknown_qids_dropped(c):
     assert "A beat about nothing" not in [b["headline"] for b in c["story"]["beats"]]
 
@@ -219,7 +228,8 @@ def main():
     code, c = run(make_run())
     assert code == 0, code
     for t in (test_context_merged_with_catalogue, test_every_quote_has_qnum,
-              unlocatable_quote_is_dropped_and_reported, test_beat_with_unknown_qids_dropped,
+              unlocatable_quote_is_dropped_and_reported, spliced_quote_with_question_label_is_dropped,
+              test_beat_with_unknown_qids_dropped,
               test_number_check_flags_wrong_percent, test_one_sided_debate_dropped,
               test_legacy_fields_kept):
         t(c)

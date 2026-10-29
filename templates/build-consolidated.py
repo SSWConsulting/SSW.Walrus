@@ -171,8 +171,9 @@ def load_rows(path):
 _META_RE = re.compile(r"^(id|start time|completion time|last modified.*|email.*|name)$", re.I)
 _ADMIN_RE = re.compile(r"free lunch|order form|are you currently blocked|blocking you|retreat", re.I)
 _OPT_PREFIX = re.compile(r"^\s*\d+\.\s*")
-# context-only fields (which project you're on) — not topic data, never numbered
-_CONTEXT_RE = re.compile(r"current project|project name", re.I)
+# context-only fields (which project you're on) — not topic data, never numbered.
+# Only the name field: "Current project - Why aren't you using…" is a real question.
+_CONTEXT_RE = re.compile(r"^\W*(your )?(current )?project\s*(-\s*)?name\b", re.I)
 _NA_RE = re.compile(r"N/?A\b", re.I)
 # Forms cuts exported headers (200 chars in the 23/10 export). A long header
 # that doesn't end a sentence was cut.
@@ -368,15 +369,31 @@ def build_question_catalogue(extracted):
     — the skeleton Chapter 1 ("What we asked") and the agents work from."""
     items = sorted(extracted["questions"] + extracted["freeText"], key=lambda q: q["column"])
     return {
-        "questions": [{
-            "qid": q["id"], "number": q["number"],
-            "type": _CATALOGUE_TYPES.get(q.get("kind"), "free-text"),
-            "text": q["text"], "truncated": q["truncated"],
-            "options": [o for o in q.get("optionOrder") or [] if o not in (q.get("writeIns") or [])],
-            "hasOther": bool(q.get("writeIns")),
-        } for q in items],
+        "questions": [_catalogue_entry(q) for q in items],
         "excluded": [{"text": e["text"], "kind": e["kind"]} for e in extracted["excluded"]],
     }
+
+
+def _catalogue_entry(q):
+    write_ins = q.get("writeIns") or []
+    options = [o for o in q.get("optionOrder") or [] if o not in write_ins]
+    entry = {
+        "qid": q["id"], "number": q["number"],
+        "type": _CATALOGUE_TYPES.get(q.get("kind"), "free-text"),
+        "text": q["text"], "truncated": q["truncated"],
+        "options": options, "hasOther": bool(write_ins),
+    }
+    if "base" in q:           # choice: the numbers a headline may quote
+        dist = q.get("distribution") or {}
+        entry.update({
+            "counts": {o: dist.get(o, 0) for o in options},
+            "percentages": {o: p for o, p in q["percentages"].items() if o not in write_ins},
+            "base": q["base"], "baseLabel": q["baseLabel"],
+            "otherCount": q["otherCount"], "otherPercent": q["otherPercent"],
+        })
+    elif q.get("mean") is not None:
+        entry.update({"mean": q["mean"], "responseCount": q.get("responseCount")})
+    return entry
 
 
 # ----------------------------------------------------------------------------
@@ -470,6 +487,16 @@ class QuoteGrounder:
             if t in _norm_text(v):
                 return h
         return None
+
+    def holds(self, name, text, header):
+        """True when every fragment of text (split on an ellipsis) sits in this
+        respondent's answer to that header."""
+        cell = next((v for h, v in self.cells_by_name.get(_norm_text(name), [])
+                     if re.sub(r"\s+", " ", h).strip() == header), None)
+        if cell is None:
+            return False
+        frags = [_norm_text(f) for f in re.split(r"\u2026|\.\.\.", str(text))]
+        return all(f in _norm_text(cell) for f in frags if f)
 
     def summary(self):
         return {
@@ -1133,6 +1160,9 @@ class _Tagger:
         if len(nq) >= 12:
             for norm, q in self.by_norm:
                 if norm.startswith(nq) or nq.startswith(norm[:40]):
+                    # with the raw file, the label must hold the whole quote
+                    if self.grounder and not self.grounder.holds(name, text, q["text"]):
+                        return None
                     return q
         return None
 

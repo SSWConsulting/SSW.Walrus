@@ -237,6 +237,67 @@ def legacy_consolidated_falls_back_to_question_beats():
         assert insight in t, insight
 
 
+def truly_legacy_consolidated_renders():
+    """A pre-chapters consolidated.json: no context/story/numbers, and
+    excludedQuestions is a list of plain strings."""
+    c = without(story=None, context=None)
+    for q in c["questionBreakdown"] + c["freeTextQuestions"]:
+        q.pop("number", None)
+    for t in c["themes"]:
+        for q in t["allQuotes"] + [t["representativeQuote"]]:
+            q.pop("qnum", None)
+    c["excludedQuestions"] = ["Your current project - name", "Are you currently blocked?"]
+    html = render(c)
+    topic = chapter(html, "topic")
+    assert "Left out" in topic and "Are you currently blocked?" in topic, topic[-600:]
+    assert "Weekly tinkering is the norm." in chapter(html, "team")
+
+
+def all_na_question_gets_no_beat():
+    c = copy.deepcopy(FIXTURE)
+    c["questionBreakdown"].append(
+        {"id": "q5", "number": "Q6", "kind": "single-select", "text": "Which IDE do you code in?",
+         "distribution": {"N/A - I'm not a dev": 4}, "optionOrder": ["N/A - I'm not a dev"],
+         "naOptions": ["N/A - I'm not a dev"], "base": 0, "baseLabel": "devs", "percentages": {},
+         "responseCount": 4, "individualResponses": [{"respondent": "Bob Jones", "value": "N/A - I'm not a dev"}],
+         "insight": "Nobody codes, apparently."})
+    t = chapter(render(c), "team")
+    assert not re.search(r"<h3[^>]*>Nobody codes, apparently\.</h3>", t), "hollow beat rendered"
+    # still reachable: named with its tag and its answers behind See all
+    assert "Which IDE do you code in?" in t and "Everyone answered N/A" in t, t[-800:]
+
+
+def quotes_are_not_repeated_across_chapters():
+    c = copy.deepcopy(FIXTURE)
+    # the beat reuses a debate quote; a standout repeats the other side;
+    # the theme's first pick is the beat's quote
+    c["story"]["beats"][0]["quotes"].append(quote("Cara Lee", "Sounds risky.", "Q5"))
+    c["standoutResponses"].append({"respondent": "Eve Park", "name": "Eve Park", "question": "Q text",
+                                   "response": "Propose only.", "whyStandout": "Bold", "qnum": "Q5"})
+    c["themes"][0]["allQuotes"].insert(0, quote("Alice Smith", "I fixed it at the root.", "Q4"))
+    html = render(c)
+    story = chapter(html, "team") + chapter(html, "words") + chapter(html, "takes")
+    for text in ("Sounds risky.", "Propose only.", "I fixed it at the root."):
+        assert story.count(text) == 1, (text, story.count(text))
+    assert "Removed stale rules." in chapter(html, "takes"), "the unrepeated standout stays"
+
+
+def left_out_label_skips_a_list_number():
+    c = copy.deepcopy(FIXTURE)
+    c["context"]["excluded"].append(
+        {"text": "1. Who + what was blocking you? 2. Include the related email subject", "kind": "admin"})
+    topic = chapter(render(c), "topic")
+    assert "Who + what was blocking you?" in topic, topic[-500:]
+
+
+def see_all_tally_uses_the_beat_base():
+    """The "See all answers" tally must agree with the beat chart: N/A left out."""
+    q2 = next(q for q in FIXTURE["questionBreakdown"] if q["id"] == "q2")
+    card = bd.render_choice_card(q2)
+    assert "10 (33%)" in card and "20 (67%)" in card, card
+    assert "Share of 30 devs (10 N/A left out)" in card, card
+
+
 def test_questions_without_a_beat_stay_reachable(html):
     # q3 (task value) has no story beat; its data must still be in Chapter 2
     assert "Task value was middling." in chapter(html, "team")
@@ -294,6 +355,11 @@ def main():
     test_verdict_is_in_whats_next(html)
     test_no_email_addresses(html)
     legacy_consolidated_falls_back_to_question_beats()
+    truly_legacy_consolidated_renders()
+    see_all_tally_uses_the_beat_base()
+    all_na_question_gets_no_beat()
+    quotes_are_not_repeated_across_chapters()
+    left_out_label_skips_a_list_number()
     headline_markup_is_escaped()
     test_write_ins_grouped_as_other()
     test_adoption_gap_not_repeated_in_signals()

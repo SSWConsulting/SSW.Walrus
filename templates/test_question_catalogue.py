@@ -27,24 +27,26 @@ CUT200 = ("Read the rule and give it a rating Do you run retros on your AI agent
 FULL190 = ("Would you let an agent propose improvements to your AI config while you sleep? "
            "A nightly job reads your agent sessions, finds repeat corrections, and proposes "
            "fixes you approve each morning.")
+# azure-private-networking (13/07) asked real topic questions "about your current project"
+AZURE_Q = "Current project - Why aren't you using private VNets?"
 HEADERS = ["Id", "Name", "Email", "Rate the rule", "Your current project - name",
            "How often?", "Which cadence at work?", "Dev-only question", "Free text",
-           LONG, CUT200, FULL190, "Are you currently blocked?"]
+           LONG, CUT200, FULL190, AZURE_Q, "Are you currently blocked?"]
 ROWS = [
     ["1", "Alice Smith", "a@x.com", "5", "Northwind", "2. Weekly", "1. Daily", "3. N/A - I'm not a dev",
-     "I fix the config whenever it repeats a mistake.", "Added a hook that blocks force pushes.", "Rule answer number 1 here.", "Nightly answer number 1 here.", "No"],
+     "I fix the config whenever it repeats a mistake.", "Added a hook that blocks force pushes.", "Rule answer number 1 here.", "Nightly answer number 1 here.", "Azure answer number 1 here.", "No"],
     ["2", "Bob Jones", "b@x.com", "4", "Contoso", "1. Daily", "1. Daily", "3. N/A - I'm not a dev",
-     "Mostly I just correct it in chat, honestly.", "Wrote a skill for our release notes.", "Rule answer number 2 here.", "Nightly answer number 2 here.", "No"],
+     "Mostly I just correct it in chat, honestly.", "Wrote a skill for our release notes.", "Rule answer number 2 here.", "Nightly answer number 2 here.", "Azure answer number 2 here.", "No"],
     ["3", "Cara Lee", "c@x.com", "3", "Fabrikam", NA, "1. Daily", "3. N/A - I'm not a dev",
-     "I don't write code so this was new to me.", "Not applicable for my role this week.", "Rule answer number 3 here.", "Nightly answer number 3 here.", "No"],
+     "I don't write code so this was new to me.", "Not applicable for my role this week.", "Rule answer number 3 here.", "Nightly answer number 3 here.", "Azure answer number 3 here.", "No"],
     ["4", "Dan Wu", "d@x.com", "5", "Tailspin", "as needed", "2. Weekly", "3. N/A - I'm not a dev",
-     "Retros on agent sessions found three repeat issues.", "Moved test commands into CLAUDE.md.", "Rule answer number 4 here.", "Nightly answer number 4 here.", "No"],
+     "Retros on agent sessions found three repeat issues.", "Moved test commands into CLAUDE.md.", "Rule answer number 4 here.", "Nightly answer number 4 here.", "Azure answer number 4 here.", "No"],
     ["5", "Eve Park", "e@x.com", "4", "Litware", "1. Daily", NA, "3. N/A - I'm not a dev",
-     "Skills beat long instruction files for us.", "Split our AGENTS.md into two skills.", "Rule answer number 5 here.", "Nightly answer number 5 here.", "No"],
+     "Skills beat long instruction files for us.", "Split our AGENTS.md into two skills.", "Rule answer number 5 here.", "Nightly answer number 5 here.", "Azure answer number 5 here.", "No"],
     ["6", "Finn Ode", "f@x.com", "4", "Adatum", "2. Weekly", NA, "3. N/A - I'm not a dev",
-     "Nightly jobs editing config sounds risky to me.", "Removed stale rules from the config.", "Rule answer number 6 here.", "Nightly answer number 6 here.", "Yes"],
+     "Nightly jobs editing config sounds risky to me.", "Removed stale rules from the config.", "Rule answer number 6 here.", "Nightly answer number 6 here.", "Azure answer number 6 here.", "Yes"],
     ["7", "Gus Hal", "g@x.com", "5", "Proseware", "1. Daily", "", "3. N/A - I'm not a dev",
-     "Weekly tinkering keeps the agent sharp.", "Added a lint step to the stop hook.", "Rule answer number 7 here.", "Nightly answer number 7 here.", "No"],
+     "Weekly tinkering keeps the agent sharp.", "Added a lint step to the stop hook.", "Rule answer number 7 here.", "Nightly answer number 7 here.", "Azure answer number 7 here.", "No"],
 ]
 
 
@@ -76,6 +78,7 @@ def test_numbers_follow_column_order(ex):
         ("Q6", LONG[:20], "free-text"),
         ("Q7", CUT200[:20], "free-text"),
         ("Q8", FULL190[:20], "free-text"),
+        ("Q9", AZURE_Q[:20], "free-text"),
     ], got
     kinds = {e["text"]: e["kind"] for e in cat["excluded"]}
     assert kinds == {"Your current project - name": "context",
@@ -112,6 +115,19 @@ def all_na_question_has_zero_base_and_no_percentages(ex):
     assert q["percentages"] == {}
 
 
+def test_catalogue_carries_the_code_numbers(ex):
+    """The agents take headline numbers from the catalogue, so it carries them."""
+    cat = {q["number"]: q for q in bc.build_question_catalogue(ex)["questions"]}
+    q2 = cat["Q2"]
+    assert q2["base"] == 6 and q2["baseLabel"] == "devs", (q2.get("base"), q2.get("baseLabel"))
+    assert q2["percentages"] == {"Daily": 50, "Weekly": 33}, q2.get("percentages")
+    assert q2["counts"] == {"Daily": 3, "Weekly": 2, "N/A - I'm not a dev": 1}, q2.get("counts")
+    assert q2["otherCount"] == 1 and q2["otherPercent"] == 17
+    assert cat["Q3"]["baseLabel"] == "devs"
+    assert cat["Q1"]["mean"] == 4.3 and cat["Q1"]["responseCount"] == 7, cat["Q1"]
+    assert "percentages" not in cat["Q5"]
+
+
 def test_truncated_flag(ex):
     assert by_text(ex, LONG)["truncated"] is True
     assert by_text(ex, "Free text")["truncated"] is False
@@ -124,7 +140,7 @@ def main():
     ex = extract()
     for t in (test_numbers_follow_column_order, test_option_order_uses_prefix_then_write_ins,
               test_percentages_exclude_na, all_na_question_has_zero_base_and_no_percentages,
-              test_truncated_flag):
+              test_catalogue_carries_the_code_numbers, test_truncated_flag):
         t(ex)
     print("test_question_catalogue: OK")
 

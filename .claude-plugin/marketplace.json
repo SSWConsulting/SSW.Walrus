@@ -1,6 +1,6 @@
 {
   "name": "ssw-walrus",
-  "description": "SSW Walrus — survey analysis reports: CSV/XLSX export in, multi-tab HTML dashboard + narrated recap video out.",
+  "description": "SSW Walrus — survey analysis reports: CSV/XLSX export in, chaptered HTML dashboard + narrated recap video out.",
   "owner": { "name": "SSW" },
   "plugins": [
     {

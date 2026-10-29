@@ -1,7 +1,7 @@
 # How SSW.Walrus works
 
 SSW.Walrus turns a weekly **"Chewing the Fat" / Free Lunch** survey export (the team's
-opinions on one tech topic) into a branded, multi-tab HTML **dashboard** and a short
+opinions on one tech topic) into a branded, chaptered HTML **dashboard** and a short
 narrated **recap video**, then emails the deliverable to leadership — all hands-off.
 
 This doc explains the end-to-end pipeline and the pieces that are easy to get wrong.
@@ -89,20 +89,28 @@ The optional `consolidator` agent only does a light polish pass on synthesis fie
 
 ## Dashboard (`build-dashboard.py` + `survey-dashboard.html`)
 
-Five tabs (Overview / Responses / Themes / People / Insights & Actions) in an **SSW
-Design System app-shell** — a left sidebar nav + top bar (not top tabs), with the
+An **episode in chapters** — The topic → Where the team is at → In their own words →
+Hot takes → What's next, then People below a divider — in an **SSW Design System
+app-shell**: a left sidebar nav + top bar (not top tabs), with the
 Tailwind config + `:root` tokens aligned to the DS (primary `#CD4242`, DS radius/shadows,
 Inter + IBM Plex Mono). `.ssw-card` is redefined to inherit DS chrome so generated cards
 pick it up automatically. Renderer notes worth knowing:
 
 - **SSW logo** — the official logo (`templates/assets/ssw-logo.png`) is inlined as a
   base64 data URI into the sidebar and footer, so the deployed HTML is self-contained.
-- **Overview order** — Key Metrics → Executive Summary → **Hard Truths** (moved high) →
-  Overall Verdict → Standout Responses.
-- **De-emphasised ratings** — the headline Key Metrics deliberately exclude the
-  video/rule content ratings (they rarely carry insight); they lead with the
-  choice/adoption signal + task value. Same directive is in the analysis prompts.
-- **People tab photos** — each respondent card shows their SSW profile photo via
+- **Chapter 1 primes the reader** — the topic, the rule/video/task boxes and every
+  question numbered Q1…Qn in form order (from the code-built catalogue plus the skill's
+  `analysis/context.json`). Every later number and quote carries its `Qn` tag.
+- **Beats** — Chapter 2 is a run of beats (headline, one chart on the N/A-free base,
+  1–2 quotes, "See all answers"). The beat headlines come from the quantitative agent;
+  the percentages come from code and `numberCheck` flags any headline number that
+  doesn't match.
+- **De-emphasised ratings** — the video/rule content ratings come last in Chapter 2 as
+  one quiet beat (they rarely carry insight). Same directive is in the analysis prompts.
+- **Empty chapters are skipped** — no debates and no standouts means no Hot takes.
+  Next buttons chain through the chapters that are present; the URL hash names the
+  open chapter.
+- **People photos** — each respondent card shows their SSW profile photo via
   `avatar_html()`. If `photoUrl` is null (non-SSW or unresolved name) or the image 404s,
   a `.js-avatar` onerror handler swaps in an initials placeholder — so a wrong photo is
   never shown.
@@ -111,7 +119,7 @@ pick it up automatically. Renderer notes worth knowing:
   "Show all" toggle revealing every raw response.
 - **No Notable Quotes section** — dropped as redundant with the theme quotes (the data
   stays in `notableQuotes` for the recap video).
-- **Emoji** — decorative emoji were removed from tabs and headings; meaning is carried by
+- **Emoji** — decorative emoji were removed from chapter names and headings; meaning is carried by
   the colour system (red/amber/green borders and badges), not icons.
 
 ---

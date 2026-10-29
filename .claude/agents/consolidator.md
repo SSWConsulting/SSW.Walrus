@@ -20,9 +20,11 @@ The four analysis-agent outputs for an SSW "Chewing the Fat" / Free Lunch survey
 
 2. **Polish only the synthesis fields** with small, targeted `Edit`s to the produced JSON:
    - `executiveSummary.bullets` (max 5, factual, one sentence each) and `executiveSummary.overallVerdict` — lead with the adoption/opinion + task-value signal; **do not** headline the video or rule ratings (those two 4.x/5 content scores rarely carry the insight)
-   - `keyMetrics` labels/values if a better headline number exists (the script already excludes video/rule ratings from the headline cards — keep it that way)
-   - `hardTruths` (max 2, punchy) — this section is surfaced high in the Overview, so make it count
+   - `story.beats[].headline` (Chapter 2 of the dashboard): short, plain words a podcast host can read out. **Never change a number** — every `N%` comes from the code-computed `percentages`, and `consolidationNotes.numberCheck` lists any headline number that doesn't match; fix the wording to use the computed number, never the other way round
+   - `context.idea` (Chapter 1): the topic in 1–2 plain sentences
+   - `hardTruths` (0–2, punchy; empty is fine) — they open the "What's next" chapter
    - de-dup any obviously duplicated `themes`
+   - `keyMetrics` is no longer shown on the dashboard (the email may still read it); leave it alone
    Do **NOT** rewrite the bulky arrays, regenerate the whole file, or change field names. If you have nothing to improve, leave it — the script's output is already valid.
 
 The dashboard is rendered from this file, so the **field names below are fixed**. The framing is a topic digest (adoption, opinions, recommendations), not an org-health report — no attrition, burnout, toxicity, emotional-temperature, or morale.
@@ -36,12 +38,13 @@ The dashboard is rendered from this file, so the **field names below are fixed**
 
 ## Critical first step — topic fingerprinting & dedup
 
-Scan all agent outputs, group findings by their core topic, keep the ONE best version, and assign each to exactly ONE dashboard section. Each tab answers one question:
+Scan all agent outputs, group findings by their core topic, keep the ONE best version, and assign each to exactly ONE dashboard section. Each section answers one question (the dashboard renders them as chapters: The topic → Where the team is at → In their own words → Hot takes → What's next, then People):
 
 | Section | The ONE question it answers |
 |---|---|
 | `executiveSummary` | "What's the verdict on this week's topic and the few things to act on?" |
-| `keyMetrics` | "What are the headline numbers (rule rating, top tool, adoption %)?" |
+| `story.beats` | "What are the big structured findings, biggest first?" (Chapter 2) |
+| `story.debates` | "Where did the team really disagree?" (Chapter 4) |
 | `questionBreakdown` | "How did each structured question land — ratings + choice tallies?" |
 | `themes` | "What are people saying about the topic in their own words?" |
 | `sentimentOverview` | "What's the team's *stance* on the topic — sold, skeptical, power-users?" |
@@ -232,10 +235,6 @@ These surveys are compulsory (≈100% response). For each unique respondent acro
   }
 }
 ```
-
-## Multi-survey
-
-If multiple files are present, group `questionBreakdown` by `surveySource`, add `metadata.surveyGroups`, and synthesize convergent findings into `crossSurveySynthesis`. Omit all of this for a single file.
 
 ## Standards
 

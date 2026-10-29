@@ -139,6 +139,15 @@ def round1(x):
 # code. The analysis agents only contribute synthesis (themes, insights,
 # commentary), and any quote text they reference is verified by QuoteGrounder.
 
+# The CTF process seeds each week's workbook with a dummy answer
+# ("TEST RESPONSE - created to generate the Excel workbook - delete me").
+_TEST_ROW_RE = re.compile(r"\btest response\b", re.I)
+
+
+def _is_test_row(row):
+    return any(_TEST_ROW_RE.search(v) for v in row.values())
+
+
 def load_rows(path):
     """Read a survey export (CSV or XLSX) -> list of {header: str-value} rows."""
     if path.lower().endswith((".xlsx", ".xls")):
@@ -146,20 +155,33 @@ def load_rows(path):
         ws = openpyxl.load_workbook(path, read_only=True, data_only=True).active
         vals = ws.iter_rows(values_only=True)
         headers = [re.sub(r"\s+", " ", str(h or "")).strip() for h in next(vals)]
-        return [
+        rows = [
             {h: ("" if v is None else str(v).strip()) for h, v in zip(headers, row)}
             for row in vals if any(v is not None and str(v).strip() for v in row)
         ]
-    with open(path, newline="", encoding="utf-8-sig") as f:
-        return [
-            {re.sub(r"\s+", " ", k or "").strip(): str(v or "").strip() for k, v in row.items()}
-            for row in csv.DictReader(f)
-        ]
+    else:
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            rows = [
+                {re.sub(r"\s+", " ", k or "").strip(): str(v or "").strip() for k, v in row.items()}
+                for row in csv.DictReader(f)
+            ]
+    return [r for r in rows if not _is_test_row(r)]
 
 
 _META_RE = re.compile(r"^(id|start time|completion time|last modified.*|email.*|name)$", re.I)
 _ADMIN_RE = re.compile(r"free lunch|order form|are you currently blocked|blocking you|retreat", re.I)
 _OPT_PREFIX = re.compile(r"^\s*\d+\.\s*")
+# context-only fields (which project you're on) — not topic data, never numbered.
+# Only the name field: "Current project - Why aren't you using…" is a real question.
+_CONTEXT_RE = re.compile(r"^\W*(your )?(current )?project\s*(-\s*)?name\b", re.I)
+_NA_RE = re.compile(r"N/?A\b", re.I)
+# Forms cuts exported headers (200 chars in the 23/10 export). A long header
+# that doesn't end a sentence was cut.
+_TRUNCATED_LEN = 195
+
+
+def _is_truncated(header):
+    return len(header) >= _TRUNCATED_LEN and not re.search(r"[.?!)]$", header)
 
 
 def _clean_option(v):
@@ -176,6 +198,50 @@ def _find_name_col(headers):
     return None
 
 
+def _option_number(raw):
+    m = re.match(r"^\s*(\d+)\.", str(raw))
+    return int(m.group(1)) if m else None
+
+
+def _add_option_stats(q, raw_answers):
+    """Option order (by the form's `N.` prefix, write-ins last) and percentages
+    on a base that leaves out N/A options. raw_answers: one list of raw option
+    strings per respondent who answered."""
+    numbers = OrderedDict()
+    for opts in raw_answers:
+        for raw in opts:
+            o = _clean_option(raw)
+            if o and o not in numbers:
+                numbers[o] = _option_number(raw)
+            elif o and numbers[o] is None:
+                numbers[o] = _option_number(raw)
+    numbered = sorted((o for o, n in numbers.items() if n is not None), key=lambda o: numbers[o])
+    write_ins = [o for o, n in numbers.items() if n is None]
+    if not numbered:          # a form without N. prefixes: every answer is an option
+        numbered, write_ins = write_ins, []
+    na = [o for o in numbers if _NA_RE.match(o)]
+    picked = [{_clean_option(r) for r in opts} - {""} for opts in raw_answers]
+    counted = [p - set(na) for p in picked]
+    counted = [p for p in counted if p]
+    base = len(counted)
+    pct = OrderedDict()
+    if base:
+        for o in numbered + write_ins:
+            if o not in na:
+                pct[o] = whole(100 * sum(1 for p in counted if o in p) / base)
+    other = sum(1 for p in counted if p & set(write_ins))
+    q["optionOrder"] = numbered + write_ins
+    q["optionNumbers"] = dict(numbers)
+    # one-off "Other" answers: shown as one row, never as form options
+    q["writeIns"] = write_ins
+    q["otherCount"] = other
+    q["otherPercent"] = whole(100 * other / base) if base else 0
+    q["naOptions"] = na
+    q["base"] = base
+    q["baseLabel"] = "devs" if any(re.search(r"not a dev", o, re.I) for o in na) else "who answered"
+    q["percentages"] = pct
+
+
 def extract_survey(rows):
     """Deterministically classify each column and extract the real responses.
 
@@ -190,7 +256,7 @@ def extract_survey(rows):
 
     questions, free_text, excluded = [], [], []
     total = len(rows)
-    for h in headers:
+    for col, h in enumerate(headers):
         head_line = h.split("\n")[0].strip()
         if _META_RE.match(head_line):
             continue
@@ -233,6 +299,7 @@ def extract_survey(rows):
                 "skipRate": skip_rate, "responseCount": len(answered),
                 "individualResponses": per_person,
             }
+            _add_option_stats(q, [[p for p in v.split(";") if p.strip()] for _, v in answered])
         else:
             cleaned = [(nm, _clean_option(v)) for nm, v in answered]
             counts = OrderedDict()
@@ -253,27 +320,80 @@ def extract_survey(rows):
                     "skipRate": skip_rate, "responseCount": len(answered),
                     "individualResponses": [{"respondent": nm, "value": v} for nm, v in cleaned],
                 }
+                _add_option_stats(q, [[v] for _, v in answered])
             else:
                 if is_admin:
-                    excluded.append({"text": qtext, "reason": "Admin/logistics question (auto-demoted)"})
+                    excluded.append({"text": qtext, "column": col, "kind": "admin",
+                                     "reason": "Admin/logistics question (auto-demoted)"})
                     continue
                 free_text.append({
-                    "text": qtext, "responseCount": len(answered),
+                    "text": qtext, "column": col, "truncated": _is_truncated(qtext),
+                    "responseCount": len(answered),
                     "participationRate": whole(100 * len(answered) / total) or 0,
                     "responses": [{"respondent": nm, "text": v} for nm, v in answered],
                 })
                 continue
         if is_admin:
-            excluded.append({"text": qtext, "reason": "Admin/logistics question (auto-demoted)"})
+            excluded.append({"text": qtext, "column": col, "kind": "admin",
+                             "reason": "Admin/logistics question (auto-demoted)"})
             continue
+        q["column"] = col
+        q["truncated"] = _is_truncated(qtext)
         questions.append(q)
 
+    # ids first (agents already reference q{n}/qt{n} by this order), then pull
+    # out context-only fields such as the project name
     for i, q in enumerate(questions):
         q["id"] = f"q{i+1}"
     for i, q in enumerate(free_text):
         q["id"] = f"qt{i+1}"
+    for q in questions + free_text:
+        if _CONTEXT_RE.search(q["text"]):
+            excluded.append({"text": q["text"], "column": q["column"], "kind": "context",
+                             "reason": "Context-only field (not topic data)"})
+    questions = [q for q in questions if not _CONTEXT_RE.search(q["text"])]
+    free_text = [q for q in free_text if not _CONTEXT_RE.search(q["text"])]
+    excluded.sort(key=lambda e: e["column"])
+    for n, q in enumerate(sorted(questions + free_text, key=lambda q: q["column"]), 1):
+        q["number"] = f"Q{n}"
     return {"questions": questions, "freeText": free_text,
             "excluded": excluded, "respondents": respondents}
+
+
+_CATALOGUE_TYPES = {"rating": "rating", "single-select": "single-select",
+                    "multi-select": "multi-select"}
+
+
+def build_question_catalogue(extracted):
+    """Every topic question in form order with its Q number, type and options
+    — the skeleton Chapter 1 ("What we asked") and the agents work from."""
+    items = sorted(extracted["questions"] + extracted["freeText"], key=lambda q: q["column"])
+    return {
+        "questions": [_catalogue_entry(q) for q in items],
+        "excluded": [{"text": e["text"], "kind": e["kind"]} for e in extracted["excluded"]],
+    }
+
+
+def _catalogue_entry(q):
+    write_ins = q.get("writeIns") or []
+    options = [o for o in q.get("optionOrder") or [] if o not in write_ins]
+    entry = {
+        "qid": q["id"], "number": q["number"],
+        "type": _CATALOGUE_TYPES.get(q.get("kind"), "free-text"),
+        "text": q["text"], "truncated": q["truncated"],
+        "options": options, "hasOther": bool(write_ins),
+    }
+    if "base" in q:           # choice: the numbers a headline may quote
+        dist = q.get("distribution") or {}
+        entry.update({
+            "counts": {o: dist.get(o, 0) for o in options},
+            "percentages": {o: p for o, p in q["percentages"].items() if o not in write_ins},
+            "base": q["base"], "baseLabel": q["baseLabel"],
+            "otherCount": q["otherCount"], "otherPercent": q["otherPercent"],
+        })
+    elif q.get("mean") is not None:
+        entry.update({"mean": q["mean"], "responseCount": q.get("responseCount")})
+    return entry
 
 
 # ----------------------------------------------------------------------------
@@ -297,6 +417,7 @@ class QuoteGrounder:
     def __init__(self, paths):
         self.sources = [os.path.basename(p) for p in paths]
         self.by_name = {}      # normalised respondent name -> [raw cell, ...]
+        self.cells_by_name = {}  # normalised respondent name -> [(header, raw cell), ...]
         self.rows = []
         cells = []
         for path in paths:
@@ -305,12 +426,13 @@ class QuoteGrounder:
             for row in rows:
                 name_col = _find_name_col(list(row.keys()))
                 nm = _norm_text(row.get(name_col, "") if name_col else "")
-                for v in row.values():
+                for h, v in row.items():
                     v = str(v or "").strip()
                     if v:
                         cells.append(v)
                         if nm:
                             self.by_name.setdefault(nm, []).append(v)
+                            self.cells_by_name.setdefault(nm, []).append((h, v))
         self.global_corpus = " ||| ".join(_norm_text(c) for c in cells)
         self.checked = self.repaired = self.dropped = 0
         self.dropped_items = []
@@ -354,6 +476,27 @@ class QuoteGrounder:
         self.dropped_items.append({"name": str(name or ""), "text": str(text)[:120]})
         sys.stderr.write(f"[build-consolidated] DROPPED unverifiable quote ({name}): {str(text)[:80]!r}\n")
         return None
+
+    def locate(self, name, text):
+        """Header of the one cell of this respondent's that holds the (grounded)
+        text, or None — a quote spliced across cells has no single question."""
+        t = _norm_text(text)
+        if not t:
+            return None
+        for h, v in self.cells_by_name.get(_norm_text(name), []):
+            if t in _norm_text(v):
+                return h
+        return None
+
+    def holds(self, name, text, header):
+        """True when every fragment of text (split on an ellipsis) sits in this
+        respondent's answer to that header."""
+        cell = next((v for h, v in self.cells_by_name.get(_norm_text(name), [])
+                     if re.sub(r"\s+", " ", h).strip() == header), None)
+        if cell is None:
+            return False
+        frags = [_norm_text(f) for f in re.split(r"\u2026|\.\.\.", str(text))]
+        return all(f in _norm_text(cell) for f in frags if f)
 
     def summary(self):
         return {
@@ -972,6 +1115,143 @@ def build_key_metrics(quant, question_breakdown, rf):
 
 
 # ----------------------------------------------------------------------------
+# story — Chapter 1 context, Chapter 2 beats, Chapter 4 debates, question tags
+# ----------------------------------------------------------------------------
+
+def build_context(extracted, ctx_json, rule_url):
+    """Chapter 1 priming: the code-built catalogue plus the skill's
+    context.json (idea, rule, video, task, a plain-words summary per qid)."""
+    cat = build_question_catalogue(extracted) if extracted else {"questions": [], "excluded": []}
+    per_q = ctx_json.get("questions") if isinstance(ctx_json.get("questions"), dict) else {}
+    questions = []
+    for q in cat["questions"]:
+        extra = per_q.get(q["qid"]) or {}
+        questions.append(dict(q, summary=str(extra.get("summary") or "").strip(),
+                              missingOptions=[str(o) for o in as_list(extra.get("missingOptions"))]))
+    rule = ctx_json.get("rule") if isinstance(ctx_json.get("rule"), dict) else None
+    if rule_url:
+        rule = dict(rule or {"title": None, "summary": None})
+        rule["url"] = rule.get("url") or rule_url
+    return {
+        "idea": ctx_json.get("idea") or None,
+        "rule": rule,
+        "video": ctx_json.get("video") if isinstance(ctx_json.get("video"), dict) else None,
+        "task": ctx_json.get("task") if isinstance(ctx_json.get("task"), dict) else None,
+        "questions": questions,
+        "excluded": cat["excluded"],
+    }
+
+
+class _Tagger:
+    """Gives a quote its question number: the cell the grounded text came from,
+    else the agent's question text matched against the catalogue."""
+
+    def __init__(self, grounder, catalogue):
+        self.grounder = grounder
+        self.by_text = {q["text"]: q for q in catalogue}
+        self.by_norm = [(_norm_text(q["text"]), q) for q in catalogue]
+        self.dropped = 0
+
+    def question_for(self, name, text, question=""):
+        h = self.grounder.locate(name, text) if self.grounder else None
+        if h is not None:
+            return self.by_text.get(re.sub(r"\s+", " ", h).strip())
+        nq = _norm_text(question)[:40]
+        if len(nq) >= 12:
+            for norm, q in self.by_norm:
+                if norm.startswith(nq) or nq.startswith(norm[:40]):
+                    # with the raw file, the label must hold the whole quote
+                    if self.grounder and not self.grounder.holds(name, text, q["text"]):
+                        return None
+                    return q
+        return None
+
+    def tag(self, obj, key="text"):
+        """Stamp qnum (+ the real question text) in place; False -> drop it."""
+        q = self.question_for(name_of(obj), obj.get(key, ""), obj.get("question", ""))
+        if q is None:
+            self.dropped += 1
+            sys.stderr.write(f"[build-consolidated] DROPPED untagged quote ({name_of(obj)}): "
+                             f"{str(obj.get(key, ''))[:80]!r} — no single question holds it\n")
+            return False
+        obj["qnum"] = q["number"]
+        obj["question"] = q["text"]
+        return True
+
+
+def _story_quote(grounder, tagger, raw):
+    if not isinstance(raw, dict):
+        return None
+    nm = name_of(raw)
+    q = {"respondent": nm, "name": nm,
+         "text": str(first(raw, "text", "quote", default="")).strip(),
+         "question": first(raw, "question", default="")}
+    if not q["text"] or (grounder is not None and not ground_quote_obj(grounder, q)):
+        return None
+    return q if tagger.tag(q) else None
+
+
+def build_story(quant, qual, grounder, tagger, catalogue):
+    qids = {q["qid"] for q in catalogue}
+    beats = []
+    for b in as_list(quant.get("beats")):
+        if not isinstance(b, dict) or not str(b.get("headline") or "").strip():
+            continue
+        bq = [i for i in as_list(b.get("qids")) if i in qids]
+        if not bq:
+            continue
+        quotes = [_story_quote(grounder, tagger, r) for r in as_list(b.get("quotes"))]
+        beats.append({"headline": str(b["headline"]).strip(), "qids": bq,
+                      "quotes": [q for q in quotes if q]})
+    debates = []
+    for d in as_list(qual.get("debates")):
+        if not isinstance(d, dict):
+            continue
+        sides = []
+        for side in as_list(d.get("sides")):
+            if not isinstance(side, dict):
+                continue
+            quotes = [_story_quote(grounder, tagger, r) for r in as_list(side.get("quotes"))]
+            quotes = [q for q in quotes if q]
+            if quotes:
+                sides.append({"label": str(side.get("label") or "").strip(), "quotes": quotes})
+        if len(sides) >= 2:
+            debates.append({"qids": [i for i in as_list(d.get("qids")) if i in qids],
+                            "question": str(d.get("question") or "").strip(), "sides": sides})
+    return {"beats": beats, "debates": debates}
+
+
+def stamp_qnums(themes, notable, standouts, tagger):
+    """Every theme/notable/standout quote gets its qnum; untaggable ones go."""
+    for t in themes:
+        t["allQuotes"] = [q for q in t["allQuotes"] if tagger.tag(q)]
+        rep = t.get("representativeQuote") or {}
+        if rep.get("text") and not tagger.tag(rep):
+            t["representativeQuote"] = (dict(t["allQuotes"][0]) if t["allQuotes"]
+                                        else {"text": "", "respondent": "", "name": "", "question": ""})
+    notable[:] = [q for q in notable if tagger.tag(q)]
+    standouts[:] = [s for s in standouts if tagger.tag(s, key="response")]
+
+
+def check_beat_numbers(story, extracted):
+    """A single-question beat's headline percentages must be numbers the code
+    computed for that question. Mismatches are flagged (stderr), not dropped."""
+    pct = {q["id"]: set((q.get("percentages") or {}).values()) | {q.get("otherPercent")}
+           for q in (extracted["questions"] if extracted else [])}
+    checked, unmatched = 0, []
+    for b in story["beats"]:
+        if len(b["qids"]) != 1:
+            continue
+        for m in re.findall(r"(\d+)\s*%", b["headline"]):
+            checked += 1
+            if int(m) not in pct.get(b["qids"][0], set()):
+                unmatched.append({"headline": b["headline"], "number": f"{m}%"})
+                sys.stderr.write(f"[build-consolidated] NUMBER CHECK: {m}% in {b['headline']!r} "
+                                 f"is not a computed percentage for {b['qids'][0]}\n")
+    return {"checked": checked, "unmatched": unmatched}
+
+
+# ----------------------------------------------------------------------------
 # main
 # ----------------------------------------------------------------------------
 
@@ -984,9 +1264,9 @@ def main():
     ap.add_argument("--rule-url", default=None)
     ap.add_argument("--focus", default=None)
     ap.add_argument("--out", default=None)
-    ap.add_argument("--data", default=None,
-                    help="raw survey CSV(s) to verify quotes against "
-                         "(default: *.csv next to the analysis dir)")
+    ap.add_argument("--data", action="append", default=None,
+                    help="the raw survey CSV/XLSX (default: the one *.csv/*.xlsx "
+                         "next to the analysis dir). One survey file per run.")
     ap.add_argument("--no-photos", action="store_true",
                     help="skip SSW.People profile-photo resolution (offline/local runs)")
     args = ap.parse_args()
@@ -1009,8 +1289,11 @@ def main():
     # Source of truth: the raw survey file. Bulk data (individual responses,
     # tallies, means, people) is extracted from it in code — no LLM in the loop.
     parent = os.path.dirname(os.path.abspath(d))
-    data_paths = [args.data] if args.data else sorted(
+    data_paths = args.data or sorted(
         glob.glob(os.path.join(parent, "*.csv")) + glob.glob(os.path.join(parent, "*.xlsx")))
+    if len(data_paths) > 1:
+        sys.stderr.write(f"[build-consolidated] error: one survey file per run (found {len(data_paths)})\n")
+        sys.exit(1)
     grounder = QuoteGrounder(data_paths) if data_paths else None
     extracted = extract_survey(grounder.rows) if grounder else None
 
@@ -1037,6 +1320,12 @@ def main():
                                             else {"text": "", "respondent": "", "name": "", "question": ""})
         notable = [q for q in notable if ground_quote_obj(grounder, q)]
         standouts = [s for s in standouts if ground_quote_obj(grounder, s, key="response")]
+    context = build_context(extracted, load(os.path.join(d, "context.json")), args.rule_url)
+    tagger = _Tagger(grounder, context["questions"])
+    if extracted:
+        stamp_qnums(themes, notable, standouts, tagger)
+    story = build_story(quant, qual, grounder, tagger, context["questions"])
+    number_check = check_beat_numbers(story, extracted)
     people = build_people(question_breakdown, free_text, survey_label)
 
     # Resolve each respondent's name to an SSW.People profile photo (best-effort;
@@ -1106,6 +1395,8 @@ def main():
         {"summary": args.focus} if args.focus else None
     )
     consolidated["keyMetrics"] = build_key_metrics(quant, question_breakdown, rf)
+    consolidated["context"] = context
+    consolidated["story"] = story
     consolidated["questionBreakdown"] = question_breakdown
     consolidated["freeTextQuestions"] = free_text
     consolidated["themes"] = themes
@@ -1139,6 +1430,8 @@ def main():
         ],
         "qualityScore": 90,
         "quoteVerification": grounder.summary() if grounder else {"status": "SKIPPED — no raw survey file found"},
+        "numberCheck": number_check,
+        "untaggedDropped": tagger.dropped,
     }
 
     out_path = args.out or os.path.join(d, "consolidated.json")
@@ -1154,6 +1447,9 @@ def main():
     if grounder:
         print(f"  quote verification: {grounder.checked} checked, "
               f"{grounder.repaired} repaired to source text, {grounder.dropped} dropped")
+    print(f"  story: {len(story['beats'])} beats, {len(story['debates'])} debates; "
+          f"{tagger.dropped} untagged quotes dropped; "
+          f"{len(number_check['unmatched'])}/{number_check['checked']} headline numbers unmatched")
     print(f"  questions: {len(question_breakdown)} structured, {len(free_text)} free-text")
     print(f"  themes: {len(themes)}  people: {len(people['respondents'])}  "
           f"signals: {len(consolidated['redFlags'])}  responses: {response_count}")

@@ -126,8 +126,8 @@ Monday 8am AEST
        ▼
 ┌───────────────────────────────────┐
 │  Logic App  logic-walrus-{env}     │   Recurrence trigger (Mon 8am AEST)
-│  List SharePoint folder            │
-│  For each new CSV/XLSX (in turn):  │
+│  Find last Friday's export         │   (name starts with the date)
+│  Skip it if already marked done    │
 │    → blob: survey-inbox/{file}     │
 │    → start the Container App Job   │   (ARM, managed identity)
 │    → poll until it finishes        │
@@ -145,7 +145,7 @@ Monday 8am AEST
 ┌───────────────────────────────────┐
 │  Logic App (same run)              │
 │  Read the result → email the link  │
-│  → move the file to Processed/     │   (dedup; failures alert + stay put)
+│  → mark done in survey-results/    │   (dedup; failures alert, retry by hand)
 └───────────────────────────────────┘
 ```
 

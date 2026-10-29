@@ -40,9 +40,23 @@ test('test_trigger_is_monday_8am_aest', () => {
   });
 });
 
-test('test_filter_skips_folders_and_non_survey_files', () => {
+test('test_trigger_runs_one_at_a_time', () => {
+  assert.equal(def.triggers.Weekly.runtimeConfiguration.concurrency.runs, 1);
+});
+
+test('test_survey_date_is_most_recent_friday_in_aest', () => {
+  // dayOfWeek: Sun=0 … Sat=6. (day + 2) % 7 is the days back to Friday: Mon → 3.
+  const date = findAction(def, 'Survey_date').inputs;
+  assert.ok(date.includes("convertFromUtc(utcNow(), 'AUS Eastern Standard Time')"));
+  assert.ok(date.includes('mod(add(dayOfWeek('));
+  assert.ok(date.includes(", 2), 7)"));
+  assert.ok(date.includes("'yyyy-MM-dd'"));
+});
+
+test('test_filter_picks_only_last_fridays_survey', () => {
+  // General holds every CTF export since 2019; only the one named for last Friday counts.
   const where = findAction(def, 'Filter_surveys').inputs.where;
-  for (const needle of ['IsFolder', 'toLower', "'.csv'", "'.xlsx'"]) {
+  for (const needle of ['IsFolder', "startsWith(item()?['Name'], outputs('Survey_date'))", 'toLower', "'.csv'", "'.xlsx'"]) {
     assert.ok(where.includes(needle), `where clause missing ${needle}`);
   }
 });
@@ -51,7 +65,8 @@ test('test_empty_folder_sends_notice', () => {
   const branch = findAction(def, 'Any_surveys');
   assert.ok(JSON.stringify(branch.expression).includes("length(body('Filter_surveys'))"));
   const notice = branch.else.actions.Send_no_file_notice;
-  assert.equal(notice.inputs.body.Subject, 'No survey file found this Monday');
+  assert.ok(notice.inputs.body.Subject.startsWith('No survey file found for Friday'));
+  assert.ok(notice.inputs.body.Subject.includes("outputs('Survey_date')"));
 });
 
 test('test_files_processed_sequentially_with_unique_result_blob', () => {
@@ -86,14 +101,42 @@ test('test_all_http_actions_use_managed_identity', () => {
   assert.ok(findAction(def, 'Start_job').operationOptions.includes('DisableAsyncPattern'));
 });
 
-test('test_null_dashboard_url_alerts_and_does_not_archive', () => {
+test('test_never_moves_or_writes_sharepoint_files', () => {
+  // The folder is the CTF team's archive; Walrus only reads it.
+  assert.ok(!JSON.stringify(def).includes('movefileasync'));
+  assert.ok(!('archivePath' in def.parameters));
+});
+
+test('test_done_files_are_skipped', () => {
+  const check = findAction(def, 'Check_done');
+  assert.equal(check.inputs.method, 'GET');
+  assert.ok(check.inputs.uri.includes("survey-results/@{encodeUriComponent(outputs('Done_blob'))}"));
+  assert.ok(findAction(def, 'Done_blob').inputs.includes("'processed/'"));
+  const done = findAction(def, 'Already_done');
+  // A missing marker is a 404, which fails Check_done; the branch must still run.
+  assert.deepEqual(done.runAfter, { Check_done: ['Succeeded', 'Failed'] });
+  assert.ok(JSON.stringify(done.expression).includes("outputs('Check_done')?['statusCode']"));
+  assert.deepEqual(done.actions, {});
+  assert.ok(done.else.actions.Process_file);
+  assert.ok(done.else.actions.Alert_on_failure);
+});
+
+test('test_null_dashboard_url_alerts_and_does_not_mark_done', () => {
   const cond = findAction(def, 'Succeeded_with_dashboard');
   assert.ok(JSON.stringify(cond.expression).includes('dashboardUrl'));
-  assert.ok(cond.actions.Move_to_processed, 'archive only on the success branch');
-  assert.ok(!cond.else.actions.Move_to_processed);
-  const moves = allActions(def).filter(([name]) => name === 'Move_to_processed');
-  assert.equal(moves.length, 1);
+  assert.ok(cond.actions.Mark_done, 'mark done only on the success branch');
+  assert.ok(!cond.else.actions.Mark_done);
+  const marks = allActions(def).filter(([name]) => name === 'Mark_done');
+  assert.equal(marks.length, 1);
   assert.ok(cond.else.actions.Send_run_alert);
+});
+
+test('test_mark_done_writes_the_marker_check_done_reads', () => {
+  const mark = findAction(def, 'Succeeded_with_dashboard').actions.Mark_done;
+  assert.equal(mark.inputs.method, 'PUT');
+  assert.equal(mark.inputs.uri, findAction(def, 'Check_done').inputs.uri);
+  assert.equal(mark.inputs.headers['x-ms-blob-type'], 'BlockBlob');
+  assert.deepEqual(mark.runAfter, { Send_result_email: ['Succeeded'] });
 });
 
 test('test_missing_result_blob_still_alerts', () => {
@@ -102,14 +145,24 @@ test('test_missing_result_blob_still_alerts', () => {
   assert.ok(alert.runAfter.Process_file.includes('TimedOut'));
 });
 
-test('test_archive_failure_sends_distinct_alert', () => {
-  const success = findAction(def, 'Succeeded_with_dashboard').actions;
-  assert.notEqual(success.Move_to_processed.inputs.body.nameConflictBehavior, 1, 'a name clash must not fail the move');
-  const alert = success.Send_archive_alert;
-  assert.ok(alert, 'archive failure needs its own alert');
-  assert.deepEqual(alert.runAfter, { Move_to_processed: ['Failed', 'TimedOut'] });
-  assert.ok(alert.inputs.body.Subject.includes('archive'));
+test('test_mark_done_failure_sends_distinct_alert', () => {
+  const alert = findAction(def, 'Succeeded_with_dashboard').actions.Send_mark_done_alert;
+  assert.ok(alert, 'a failed marker needs its own alert');
+  assert.deepEqual(alert.runAfter, { Mark_done: ['Failed', 'TimedOut'] });
+  assert.ok(alert.inputs.body.Subject.includes('not marked done'));
   assert.ok(alert.inputs.body.Body.includes('re-sent'));
+});
+
+test('test_failure_alerts_link_the_portal_and_execution', () => {
+  for (const name of ['Send_run_alert', 'Alert_on_failure']) {
+    const body = findAction(def, name).inputs.body.Body;
+    assert.ok(body.includes('https://portal.azure.com/#resource@{workflow().id}'), `${name} needs the portal link`);
+    assert.ok(body.includes("--execution @{body('Start_job')?['name']}"), `${name} needs the execution name`);
+  }
+});
+
+test('test_file_content_is_not_reencoded', () => {
+  assert.equal(findAction(def, 'Get_file_content').inputs.queries.inferContentType, false);
 });
 
 test('test_start_job_sends_only_name_image_resources_env', () => {

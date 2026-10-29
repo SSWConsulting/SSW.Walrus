@@ -1,5 +1,6 @@
-// The weekly Walrus run: Monday 8am AEST, SharePoint folder -> survey-inbox blob ->
-// start the Container App Job -> wait -> read survey-results/{run}.json -> email.
+// The weekly Walrus run: Monday 8am AEST, last Friday's export from the SharePoint
+// folder -> survey-inbox blob -> start the Container App Job -> wait -> read
+// survey-results/{run}.json -> email -> write survey-results/processed/{file}.json.
 // The workflow definition lives in ../logicapp/workflow.json; everything
 // environment-specific is passed in as workflow parameters.
 
@@ -27,13 +28,10 @@ param sharePointSiteUrl string
 @description('Folder the Forms export is dropped into, e.g. /Shared Documents/General')
 param sharePointFolderPath string
 
-@description('Folder processed files are moved to')
-param sharePointArchivePath string
-
 @description('Result email recipients')
 param resultEmailTo array
 
-@description('Failure / empty-Monday alert recipients')
+@description('Failure / no-survey alert recipients')
 param alertEmailTo array
 
 @description('Run on the Monday schedule (false keeps the workflow disabled, e.g. staging)')
@@ -79,7 +77,6 @@ resource workflow 'Microsoft.Logic/workflows@2019-05-01' = {
       storageAccount: { value: storageAccountName }
       siteUrl: { value: sharePointSiteUrl }
       folderPath: { value: sharePointFolderPath }
-      archivePath: { value: sharePointArchivePath }
       resultTo: { value: resultEmailTo }
       alertTo: { value: alertEmailTo }
     }

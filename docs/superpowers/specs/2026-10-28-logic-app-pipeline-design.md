@@ -101,11 +101,11 @@ managed identity. So one Logic App replaces both flows **and** the Function App.
       identity) and parse it.
    6. **If succeeded and `dashboardUrl` is non-null**: send the result email
       (Office 365 Outlook, *Send an email (V2)*). Subject `Survey results: {topic}`,
-      body `emailHtml`, HTML on, to the result recipients. Then **move the file** to
-      `Processed/` in the same SharePoint folder.
-   7. **Otherwise**: send an alert email (see below) and **leave the file in place**
-      so next Monday retries it, or someone re-runs the Logic App by hand after a
-      fix. *(Builder's call, made in design: don't archive failures.)*
+      body `emailHtml`, HTML on, to the result recipients. Then **write a done
+      marker** `survey-results/processed/{file}.json`. *(Changed 29/10/2026: the
+      first design moved the file to `Processed/`; see "Settled with Eddie".)*
+   7. **Otherwise**: send an alert email (see below) and write no marker, so a
+      manual re-run after a fix picks the file up again.
 4. Wrap the per-file steps in a **Scope**. A run-after branch on
    `Failed`/`TimedOut` sends the alert email, so connector or ARM errors alert too,
    not just job failures.
@@ -224,16 +224,17 @@ trigger" against a test folder, by overriding `sharePointFolderPath`.
    no old Function App, plan or queues carry over. Delete the old personal-sub stack
    (`rg-walrus-staging`) separately once prod is verified.
 3. **Turn off old Flow A and Flow B**, if they're still enabled, before the first
-   live Monday. Otherwise Flow A can grab the file and move it to `Processed/`
-   first. That closes #5.
+   live Monday, so the old and new pipelines don't both send a report. That
+   closes #5.
 
 ## Done looks like
 
 - `az bicep build infra/main.bicep` compiles clean (and the `listKeys` linter
   warning is gone).
 - In a test resource group: deploy, authorise both connections, drop a past survey
-  export into the folder, run the trigger by hand. Dashboard deploys to `$web`, the
-  result email arrives, the file moves to `Processed/`.
+  export named for last Friday into a test folder, run the trigger by hand. Dashboard deploys to `$web`, the
+  result email arrives, and `survey-results/processed/{file}.json` is written.
+  A second manual run skips the file.
 - Same with a deliberately broken file: alert email arrives, the file stays put.
 - No video is recorded with `recapEnabled = false`.
 
@@ -248,11 +249,21 @@ trigger" against a test folder, by overriding `sharePointFolderPath`.
 ## Settled with Eddie
 
 - **SharePoint:** site `https://sswcom.sharepoint.com/sites/SSWFreeLunch`, library
-  *Shared Documents*, folder `/Shared Documents/General` (archive to
-  `/Shared Documents/General/Processed`).
+  *Shared Documents*, folder `/Shared Documents/General`. **Read only.**
 - **Recipients are lists** (`resultEmailTo`, `alertEmailTo`, both string arrays,
   joined with `;` for the Outlook action). For now both are just Eddie's address.
   The report list moves to SSWAll later by editing `prod.bicepparam`. No code change.
-- **Empty Monday alerts.** If the folder has no unprocessed `.csv`/`.xlsx`, send a
-  short "No survey file found this Monday" email to the alert list. Holiday weeks
-  will get that email too; Eddie accepted that.
+- **Which file (changed 29/10/2026).** `General` is the CTF team's archive of
+  every export since 2019 (about 400 files), not an inbox. A "process everything
+  unprocessed" run would have reprocessed all of them and moved them out of the
+  team's folder. The CTF runs once a week on Friday, and the Form writes straight
+  into a workbook named `YYYY-MM-DD - {topic} - Chewing the Fat 📈.xlsx` with
+  that Friday's date. So the Monday run picks only the file whose name starts
+  with the most recent Friday's date (`(dayOfWeek + 2) % 7` days back, AEST),
+  as the old Power Automate flow did. It never moves or edits SharePoint files.
+  Dedup is a marker blob `survey-results/processed/{file}.json`, written after
+  the report email sends. Answers that arrive after Monday 8am are not in the
+  report; Eddie accepted that.
+- **No-survey alerts.** If no export for last Friday is there, send "No survey
+  file found for Friday {date}" to the alert list. Holiday weeks get that email
+  too; Eddie accepted that.

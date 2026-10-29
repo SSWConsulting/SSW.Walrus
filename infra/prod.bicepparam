@@ -11,7 +11,6 @@ param recapEnabled = false
 param scheduleEnabled = true
 param sharePointSiteUrl = 'https://sswcom.sharepoint.com/sites/SSWFreeLunch'
 param sharePointFolderPath = '/Shared Documents/General'
-param sharePointArchivePath = '/Shared Documents/General/Processed'
 // Just Eddie for now; the report moves to SSWAll later.
 param resultEmailTo = [ 'eddiekranz@ssw.com.au' ]
 param alertEmailTo = [ 'eddiekranz@ssw.com.au' ]

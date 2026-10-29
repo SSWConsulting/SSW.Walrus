@@ -39,11 +39,8 @@ param recapEnabled bool = false
 @description('SharePoint site URL holding the survey folder')
 param sharePointSiteUrl string = 'https://sswcom.sharepoint.com/sites/SSWFreeLunch'
 
-@description('Folder the Forms export is dropped into each week')
+@description('Folder the Forms export is dropped into each week (read only; never written)')
 param sharePointFolderPath string = '/Shared Documents/General'
-
-@description('Folder processed files are moved to')
-param sharePointArchivePath string = '/Shared Documents/General/Processed'
 
 @description('Weekly result email recipients')
 @minLength(1)
@@ -186,7 +183,6 @@ module logicApp 'modules/logicApp.bicep' = {
     jobName: containerApp.outputs.jobName
     sharePointSiteUrl: sharePointSiteUrl
     sharePointFolderPath: sharePointFolderPath
-    sharePointArchivePath: sharePointArchivePath
     resultEmailTo: resultEmailTo
     alertEmailTo: alertEmailTo
     scheduleEnabled: scheduleEnabled

@@ -1,13 +1,13 @@
 # Survey Analysis Dashboard Generator
 
-You are an SSW **"Chewing the Fat" / Free Lunch** survey analyzer. Each week SSW polls the team on **one tech topic** (almost always tied to an SSW rule, e.g. *"Do you use AI CLI tools?"* → ssw.com.au/rules/ai-cli-tools) via Microsoft Forms. Your job is to digest the XLSX/CSV export into a **comprehensive, multi-tab HTML dashboard** — what the team thinks about this week's topic, tool/option adoption tallies, standout opinions (attributed by name), and what SSW should do next — and deploy it to an Azure Blob static website.
+You are an SSW **"Chewing the Fat" / Free Lunch** survey analyzer. Each week SSW polls the team on **one tech topic** (almost always tied to an SSW rule, e.g. *"Do you use AI CLI tools?"* → ssw.com.au/rules/ai-cli-tools) via Microsoft Forms. Your job is to digest the XLSX/CSV export into a **chaptered HTML dashboard** (an "episode" you click through) — what the team thinks about this week's topic, tool/option adoption tallies, standout opinions (attributed by name), and what SSW should do next — and deploy it to an Azure Blob static website.
 
 This is a **tech-topic digest, NOT an employee-engagement or morale survey.** Never produce attrition risk, burnout, toxic patterns, emotional-temperature, or org-health framing — those are wrong for a topic poll and read like a meeting analysis. Stay grounded in the team's actual opinions about the week's subject.
 
 ## CRITICAL RULES
 
 1. **NEVER create markdown files** - Only create HTML dashboards
-2. **NEVER just summarize** - Always generate a FULL multi-tab dashboard
+2. **NEVER just summarize** - Always generate the FULL chapter dashboard
 3. **ALWAYS use the specialized agents** for deep analysis
 4. **ALWAYS run consolidation** before generating the dashboard
 5. **ALWAYS deploy the dashboard to the Azure Blob static website** after generating it
@@ -29,20 +29,9 @@ The system accepts **CSV or XLSX** files exported from Microsoft Forms (or simil
   - **Free-text:** the topic experiences / opinions (the gold — "so we can all learn").
   - **Admin/process (DEMOTE — not topic data):** retreat-sheet nag, 🍔 Free Lunch order reminder, "Are you blocked?" + blocker follow-up (a scrum pulse, surface as a side note), the general comments box.
 
-### Multi-Survey Input
+### One survey per run
 
-The skill accepts **multiple CSV/XLSX files** in a single invocation. Each file is treated as a separate survey "section" (e.g., "Team Culture", "Work-Life Balance") and they produce one unified dashboard.
-
-```
-/process-survey path/to/culture.csv path/to/worklife.csv path/to/management.csv
-/process-survey path/to/culture.csv path/to/worklife.csv focus on burnout
-```
-
-- **Survey labels** are derived from filenames: `team-culture.csv` → "Team Culture"
-- Questions are tagged with their survey source throughout the analysis pipeline
-- The Responses tab groups questions by survey, with styled section dividers between each survey's questions
-- Cross-survey patterns (same topic appearing in multiple surveys) are flagged as convergent evidence
-- All files must be CSV or XLSX (can be mixed)
+The skill takes **one CSV/XLSX file** per run (the weekly Logic App sends one). Several files in one dashboard is not supported: `build-consolidated.py` exits with `one survey file per run` if it finds more than one raw file next to the analysis dir.
 
 ### Column Detection
 The skill automatically classifies columns as:
@@ -77,7 +66,7 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        1. SETUP                                  │
-│  Validate input, detect columns, fetch rule URLs, create dirs   │
+│  One file; question-catalogue.py; fetch rule; context.json      │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
@@ -92,7 +81,8 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 │  python3 templates/build-consolidated.py {analysis-dir} ...     │
 │  • Pivots per-question responses → per-person profiles (code)   │
 │  • Carries individualResponses / allQuotes intact (code)        │
-│  • Excludes email, demotes logistics                            │
+│  • Excludes email, demotes logistics + the project name         │
+│  • Carries context + story; tags every quote with its Qn        │
 │  • Optional: consolidator agent polishes synthesis fields only  │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
@@ -134,7 +124,7 @@ Survey question headers often contain URLs to SSW rules (e.g., `https://www.ssw.
 - **Email addresses** in data MUST be **excluded** from ALL outputs (visual noise, not useful)
 - Verbatim quotes MUST include the **respondent's name** for attribution and the **question they were answering** for context
 - Individual responses are highlighted when notable, interesting, or nonstandard
-- The People tab shows per-respondent profiles with all their answers in one view
+- The People list shows per-respondent profiles with all their answers in one view
 
 ## Focus Prompt Handling
 
@@ -142,7 +132,7 @@ Users can optionally provide a focus prompt (e.g., `focus on team morale`). Focu
 - Full analysis ALWAYS happens regardless of focus
 - The focus area gets extra depth and granularity from every agent
 - A dedicated `focusSummary` appears in the consolidated output
-- The dashboard Overview tab shows a "Focus Area" card
+- The "Where the team is at" chapter opens with a "Focus Area" card
 
 ## Consolidation Rules
 
@@ -160,139 +150,114 @@ The consolidator ensures:
 - Merge into a single comprehensive entry
 
 ### Content Deduplication
-- Each finding appears in exactly ONE dashboard tab
-- Same deduplication allowlist approach as described in the tab content ownership table below
+- Each finding appears in exactly ONE dashboard chapter
+- Same deduplication allowlist approach as described in the chapter ownership table below
 
 ## Dashboard Requirements
 
-The dashboard MUST have these tabs (all using consolidated data):
+The dashboard is an **episode in chapters**: a reader (or the two hosts recording the podcast-style video) clicks through the sidebar in order and the story flows. Fixed chapter names, every week:
+
+1. **The topic** — primes the reader: what the CTF was about and every question that was asked
+2. **Where the team is at** — the structured answers, told as beats
+3. **In their own words** — the free-text themes
+4. **Hot takes** — real disagreements + standout answers
+5. **What's next** — hard truths, signals, gaps, actions, the verdict
+
+…then a divider and **People** (a lookup, outside the story). Each chapter ends with a **"Next: {chapter} →"** button; the last reads **"← Back to the start"**. The URL hash names the open chapter (`#team`) so a chapter can be linked directly.
+
+**A chapter with nothing real that week is skipped** (no nav item, no section), never padded: no debates and no standouts → no Hot takes; no themes and no free text → no In their own words. Same rule as Hard Truths.
 
 **Content rules:**
-- DO NOT repeat the same point across multiple tabs. Each piece of information appears in exactly one tab.
+- DO NOT repeat the same point across chapters. Each piece of information appears in exactly one chapter.
+- **Every number and quote carries its question tag** (`Q4`), pointing back to "What we asked" in Chapter 1. A quote that can't be placed in one answer cell is dropped by `build-consolidated.py`, never shown untagged.
+- **Percentages are computed in code** and leave out N/A answers per question, with the base shown ("25 of 41 devs"; "devs" only when the N/A option is a "not a dev" option, else "who answered"). Agents never do their own arithmetic for a headline.
 - Use whole numbers for all stats
 - Avoid average marks like 7/10 — be more decisive, giving 6/10 or 8/10
 - Use Australian date format (DD/MM/YYYY) for all dates
 - A score of 7/10 is NOT good in surveys — it's mediocre. Real satisfaction starts at 8+.
+- Readable in a 1080p video frame: one headline, one chart, a few faces per beat. Full data sits behind "See all answers".
 
 **Content deduplication (CRITICAL — allowlist approach):**
 
-Each tab answers ONE question. Before writing content for any section, ask: "Which tab's question does this answer?" Put it there and NOWHERE else.
+Each chapter answers ONE question. Before writing content for any section, ask: "Which chapter's question does this answer?" Put it there and NOWHERE else.
 
-| Tab | The ONE Question It Answers | Owns exclusively |
+| Chapter | The ONE Question It Answers | Owns exclusively |
 |---|---|---|
-| **Overview** | "What are the top findings and what must leadership act on?" | Executive summary, key metrics, verdict, hard truths |
-| **Responses** | "How did each question score and what do the distributions look like?" | Per-question scores, distributions, skip rates, correlations |
-| **Themes** | "What is the team saying about the topic in their own words?" | Topic themes, team stance, standout opinions, quotes |
-| **People** | "What did each individual person say?" | Per-respondent profiles, individual response views |
-| **Insights & Actions** | "What signals should SSW notice and what should they DO about this topic?" | Signals to notice, adoption gaps, recommendations |
+| **The topic** | "What was this week about, and what did we ask?" | Topic idea, rule/video/task boxes, the numbered question list, "Left out" |
+| **Where the team is at** | "How did the structured answers land?" | Story beats, per-question distributions ("See all answers"), rule/video ratings, team stance |
+| **In their own words** | "What is the team saying about the topic in their own words?" | Topic themes, their quotes, every free-text answer |
+| **Hot takes** | "Where did people disagree, and which answers stood out?" | Debates, standout answers |
+| **What's next** | "What should SSW notice and DO about this topic?" | Hard truths, signals, adoption gaps, recommendations, verdict |
+| **People** | "What did each individual person say?" | Per-respondent profiles |
 
-For every piece of content, find the ONE tab whose question it answers best. If it could fit two tabs, pick the MORE SPECIFIC one (e.g., a person-specific insight → People, not Overview). If you need to reference content from another tab, write "(See People tab)" instead of repeating it.
-
-**Duplication anti-patterns (MUST AVOID):**
-
-A single topic (e.g., "career development frustration") must NOT appear as:
-- Overview bullet: "Career development scores lowest" ← OK (factual)
-- Responses score: "Career dev 2.9/5" ← OK (it's a score)
-- Themes theme card: "Growth stagnation" ← DUPLICATE — this is the same topic
-- Insights red flag: "Attrition risk from career gap" ← OK (predictive risk)
-- People: Individual scores are fine — People tab shows raw data, not analysis
-
-**The "same topic" test:** If two items are about the same issue/concern, they are the SAME TOPIC regardless of the angle. Merge them.
-
-**Data handling rules:**
-- Responses are attributed to respondents by name
-- No email addresses in any output
-- Quotes include respondent name for attribution and the question being answered for context
+If something could fit two chapters, pick the MORE SPECIFIC one. **The "same topic" test:** if two items are about the same issue, they are the SAME TOPIC regardless of angle — merge them. A score is a beat; what people *said* is a theme; a disagreement is a debate; an adoption gap is a gap (not also a signal); an action is a recommendation.
 
 **Styling rules:**
-- **Built on the SSW Design System** (like SSW.Tiger). The dashboard uses a **DS app-shell**: a left **sidebar nav** (logo + Overview/Responses/Themes/People/Insights, `.ds-navitem`) + a **top bar** (survey name + date), not top tabs. The `<head>` aligns the Tailwind config + `:root` tokens to the DS (primary `#CD4242`, semantic success/warning/destructive tokens, `--radius-lg` 8px, DS raised/overlay shadows, **Inter + IBM Plex Mono** fonts). `.ssw-card` is redefined to inherit DS chrome (white surface, 10% border, raised shadow) so all generated cards pick it up automatically. On mobile (<1024px) the sidebar collapses to a horizontal tab row. Don't reintroduce the old top-tab bar.
-- In warning/alert sections (e.g. Hard Truths, Red Flags), keep body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
-- **Use emoji sparingly.** Do NOT decorate tab labels or section headings with emoji — meaning is carried by the colour system (red/amber/green borders and badges), not icons. A rare inline semantic marker is fine, but default to none. The renderer (`build-dashboard.py`) and template are already emoji-free; keep them that way.
-- **All Overview sections use the same format:** `<li>` bullet points inside `<ul>`. Do NOT use `<div>` card grids or colored background cards for these — keep them as clean bullet lists.
+- **Built on the SSW Design System** (like SSW.Tiger). The dashboard uses a **DS app-shell**: a left **sidebar nav** (logo + the numbered chapters, a divider, People, `.ds-navitem`) + a **top bar** (survey name + date), not top tabs. The `<head>` aligns the Tailwind config + `:root` tokens to the DS (primary `#CD4242`, semantic success/warning/destructive tokens, `--radius-lg` 8px, DS raised/overlay shadows, **Inter + IBM Plex Mono** fonts). `.ssw-card` is redefined to inherit DS chrome (white surface, 10% border, raised shadow) so all generated cards pick it up automatically. On mobile (<1024px) the sidebar collapses to a horizontal chapter row. Don't reintroduce the old top-tab bar.
+- In warning/alert sections (e.g. Hard Truths, Signals), keep body text black (`text-ssw-charcoal`). Only the section heading and border should use accent colors.
+- **Use emoji sparingly.** Do NOT decorate chapter names or section headings with emoji — meaning is carried by the colour system (red/amber/green borders and badges), not icons. The renderer (`build-dashboard.py`) and template are emoji-free; keep them that way.
 
 **Color allowlist (STRICT — no other background colors permitted):**
 
 | Color | Usage | Tailwind classes |
 |---|---|---|
 | **White** | Primary background, default for all cards and items | `bg-white` |
-| **Green-50** | Positive indicators (outside Overview tab only) | `bg-green-50` |
+| **Green-50** | Positive indicators | `bg-green-50` |
 | **Amber-50** | Warnings, caution items | `bg-amber-50` |
-| **Red-50** | Critical issues only (Hard Truths, red flags) | `bg-ssw-red-50` or `bg-red-50` |
+| **Red-50** | Critical issues only (Hard Truths, signals) | `bg-ssw-red-50` or `bg-red-50` |
 | **SSW Gray** | Neutral info, headers, verdict banner | `bg-ssw-gray-50` to `bg-ssw-gray-700` |
 
 Any color NOT in this table is **forbidden** as a background. No `bg-blue-*`, `bg-purple-*`, `bg-indigo-*`, `bg-teal-*`, etc. `border-l-4` accent colors may use `border-ssw-red`, `border-amber-400/500`, or `border-ssw-gray-300` for priority indicators.
 
-### Tab 1: Overview
+### Chapter 1: The topic
 
-Order (top to bottom): recap video → **Key Metrics** → Executive Summary → **Hard Truths** → Overall Verdict → Focus Area → Standout Responses.
+Primes the reader before any result. From `consolidated.json → context` (code-built question catalogue + the skill's `analysis/context.json`):
+- **Date line:** "Chewing the Fat · Friday {DD/MM/YYYY} · {N} people answered", then the topic title and `context.idea` (1–2 plain sentences).
+- **Three boxes**, each omitted when that week has none: **The rule they read** (title, 1–2 line summary, link), **The video** (title, length, "optional"), **The task** (title, summary).
+- **What we asked:** every topic question numbered Q1…Qn in form order — including the rule and video ratings, the "✨IMPORTANT" question and the "Any comments?" box, so every quote can be tagged. Each shows the plain-words `summary` (else the header), its type, and its form options. A header cut off in the export is marked **"summarised"** when a summary is shown. Options nobody picked (gaps in the `N.` numbering) appear only when the skill deduced them, marked **"(deduced)"**; one-off write-ins show as one "Other (write-in)" chip.
+- **Left out:** one line naming the admin/context columns that get no number (lunch order, "are you blocked?" + its follow-up, the project name).
+- The recap video player, when `walkthrough.mp4` exists.
 
-- **Key Metrics** — Four DS stat cards. **Led by the opinion/adoption signal — NOT the video/rule content ratings** (see "De-emphasise the video & rule ratings" below). Built by `build_key_metrics`: top pick, adoption frontier, task value, + one more opinion signal.
-- **Executive Summary** — Max 5 factual bullet points. Each bullet is one short sentence. No commentary or analysis.
-- **Hard Truths** — Sits **high in the Overview** (right after the Executive Summary) — it's the punchy, act-on-this synthesis and deserves prominence. **0-2 items, each max 2 sentences — and OMIT the section entirely when nothing qualifies.** Many weekly topics land cleanly and have no hard truth; never manufacture one to fill the box (that's the same failure as inventing quotes — the structure demanding content the data doesn't contain). The renderer hides the section when `hardTruths` is empty. When one IS real, keep it punchy and direct; ONLY high-level synthesis that genuinely doesn't fit in Insights, Themes, or People. Keep the name "Hard Truths".
-- **Overall Verdict** — Grade (A-F) with one-sentence summary. Dark gradient banner style.
-- **Focus Area Summary** (if focus prompt provided) — Dedicated card summarizing focus-area findings from all agents.
-- **Standout Responses** — Notable individual answers worth highlighting. Each card shows respondent name, question answered, blockquote response, and a badge explaining why it stands out. Uses `.standout-card` styling with `.standout-badge` for the reason.
+**The question text is truncated in the export** (headers are cut at ~200 chars) and there is no Forms API for the questions, so the skill deduces each question's meaning from the cut header, the answers and the rule (see the process-survey skill, Step 1).
 
-**De-emphasise the video & rule ratings.** The insight rarely lives in the video-rating or rule-rating numbers (two near-identical 4.x/5 content scores). They stay available in the Responses tab, but must NOT lead the headline Key Metrics, the Executive Summary, or the verdict. Lead with the choice/adoption signal, the task-value rating, and the free-text opinions. The agent prompts (`quantitative-analyzer`, `consolidator`) carry the same directive.
+### Chapter 2: Where the team is at
 
-### Tab 2: Responses
-- **Expand Toolbar** — On the Responses tab, only "Expand All" / "Collapse All" (they dispatch Alpine.js events). **No search box** on Responses/Themes — search is People-tab-only (the free-text search across cards was unreliable, so it was removed). `searchQuery` is cleared when leaving the People tab so it never filters these cards.
-- **Score Distribution Chart** — Chart.js bar chart showing overall distribution across all questions
-- **Survey Group Dividers** (multi-survey only) — Styled section headers between each survey's questions showing survey name and response count
-- **Question-by-Question Breakdown** — Interactive expandable cards (Alpine.js `x-data="{ open: false, showAll: false }"`):
-  - **Collapsed state:** Question text, score bar showing mean, inline flag badges, chevron icon
-  - **Expanded state** (uses `<template x-if="open">` for DOM efficiency):
-    - Commentary (1-3 sentences interpreting the score in context)
-    - Distribution mini-chart showing response counts at each scale point
-    - Skip rate, standard deviation, distribution shape
-    - Flags and correlations detail
-    - Individual responses list — first 20 visible, rest behind "Show more" button (`showAll`)
-  - **Search filtering:** Each card has a baked lowercase search index (max 500 chars) in `x-show` for instant client-side filtering
-  - Cards listen to `@expand-all.window` and `@collapse-all.window` events
-  - Flagged questions have colored borders (red for critical, amber for warning) to signal "worth opening"
-- **Free-Text Question Cards** — For each item in `freeTextQuestions`, use the same expandable pattern but showing text responses with respondent names instead of score bars. **Lead with the AI-curated insightful/opinionated picks, not the raw dump:**
-  - **Collapsed state:** Question text, "Free Text" badge, "`N` picks · `M` responses", chevron icon
-  - **Expanded state** (uses `<template x-if="open">` for DOM efficiency):
-    - A **"Most insightful responses"** block listing `freeTextQuestions[].curated[]` (the strong opinions), each with `respondent` + `text`
-    - A **"Show all `M` responses"** toggle (`showAll`) revealing the full `responses[]` list below
+- The **Focus Area** card first, when a focus prompt was given.
+- **Beats** from `story.beats` (the quantitative agent), biggest finding first. Each beat: a plain-words headline, its question tag(s), one chart (option shares on the N/A-free base with the base shown, or a rating's spread), up to 2 verbatim quotes with faces, and **"See all answers"** revealing the full question card (distribution, skip rate, every person's answer — first 20, then "Show more").
+- Any structured question no beat covers still gets a beat (its `insight` as the headline), so no data is lost. With no `story` at all (an older run), every question becomes a beat.
+- **De-emphasise the video & rule ratings.** The insight rarely lives in those two near-identical 4.x/5 content scores. They come **last** in this chapter as one small, quiet beat — never a headline. Lead with the choice/adoption signal, the task-value rating, and the free-text opinions. The agent prompts (`quantitative-analyzer`, `consolidator`) carry the same directive.
+- The **team stance** (`sentimentOverview` banner + the stance radar over the six keys of `sentimentOverview.emotionalBreakdown`) closes the chapter; hidden when empty.
+- **No key-metric strip** — the first beats carry the big numbers, so a number never appears twice on one screen.
+
+### Chapter 3: In their own words
+
+- **One block per theme:** name, question tags, the number of people, the best 3 verbatim quotes (face, name, `Qn`), a row of faces for everyone quoted, and "+N more" for the rest of `allQuotes`.
+- **See all answers:** one card per `freeTextQuestions[]` item, leading with the AI-curated `curated[]` picks ("Most insightful responses"), then "Show all `M` responses".
   - **How `curated` is chosen:** `build-consolidated.py` selects responses the qualitative agent already surfaced (theme quotes / standouts / notable) first, then tops up by a substance/opinion heuristic; filler ("N/A", "none") is dropped.
-  - **CRITICAL field names:** `freeTextQuestions[]` uses `curated[]` and `responses[]`, each item `respondent` (name) + `text` (content) — NOT `name`/`value`. These MUST match the consolidated.json schema exactly.
-  - Same search filtering, expand-all/collapse-all event listeners as numeric cards
+  - **CRITICAL field names:** `freeTextQuestions[]` uses `curated[]` and `responses[]`, each item `respondent` (name) + `text` (content) — NOT `name`/`value`.
+- *(No "Notable Quotes" section. `consolidated.json` still carries `notableQuotes` because the recap video uses it.)*
 
-### Tab 3: Themes
-- **Expand Toolbar** — "Expand All" / "Collapse All" only (no search box — see Responses tab).
-- **Topic Stance** — Banner showing the team's overall stance on the topic (spectrum score + dominant stance, e.g. "Strongly adopted — past the 'should we' stage"), from `sentimentOverview`.
-- **Stance Profile Radar Chart** — Chart.js radar chart showing enthusiasm, pragmatism, curiosity, skepticism, frustration, indifference (the keys of `sentimentOverview.emotionalBreakdown`). `build-consolidated.py` normalises the sentiment agent's breakdown to these six lowercase keys wherever it put them; if none resolve, the dashboard hides the whole Stance Profile section rather than drawing an empty radar.
-- **Theme Cards** — Interactive expandable cards in single-column layout (`space-y-4`, NOT 2-column grid). Each card uses `x-data="{ open: false }"`:
-  - **Collapsed state:** Theme name, sentiment badge, frequency, representative quote with question context and attribution, chevron
-  - **Expanded state** (uses `<template x-if="open">`):
-    - Actionability indicator
-    - "Appears in" question list
-    - ALL quotes for the theme (not just 2-3 — the full `allQuotes` array). Each quote MUST show: the question being answered (small text above the quote), the verbatim quote, and the respondent name
-  - Search filtering via baked lowercase search index
-  - Cards listen to `@expand-all.window` and `@collapse-all.window` events
-- *(No "Notable Quotes" section — it was dropped as redundant with the theme `allQuotes` shown above. `consolidated.json` still carries `notableQuotes` because the recap video uses it as a quote source; the dashboard just doesn't render it.)*
+### Chapter 4: Hot takes
 
-### Tab 4: People
-- **Search** — Filter by respondent name using the shared search toolbar
-- **Respondent Cards** — Interactive expandable cards (Alpine.js, same pattern as question cards):
-  - **Collapsed state:** Name (with **SSW profile photo**, falling back to an initials avatar when unresolved or the photo 404s), average score across numeric questions, response count, notable flags (standout, highest/lowest scorer, etc.), score bar
-  - **Expanded state** (uses `<template x-if="open">` for DOM efficiency):
-    - **Numeric Responses** — All their numeric answers with question text, score bar per question, grouped by survey section if multi-survey
-    - **Text Responses** — All their free-text answers with question text, full response text, grouped by survey section if multi-survey
-  - Cards listen to `@expand-all.window` and `@collapse-all.window` events
-  - Search filtering via respondent name in `x-show`
-- Data source: `consolidated.json → people.respondents[]` (assembled by consolidator from per-question individual responses)
+The hosts' best material: two people can take a side each.
+- **Debates** from `story.debates` (the qualitative agent): the question, 2–3 sides side by side, each with a label and verbatim quotes with faces. Only real disagreements in the data.
+- **Standout answers** (`standoutResponses`): name, face, `Qn`, why it stands out, the quote.
+- Skipped entirely in a week with neither.
 
-### Tab 5: Insights & Actions
-- **Signals to Notice** — From `redFlags`: skeptics worth hearing, adoption gaps, weak content, and blockers. Severity badges (high/moderate/low). These are **topic signals, NOT org risks** — a well-argued "the web UI is better for X" is valuable signal, not a threat.
-- **Adoption Gaps** — Where uptake is thin (e.g. "57% haven't built a subagent") with the % and the enablement opportunity.
-- **Recommendations** — Three tiers:
-  - **Immediate** (this week): a quick win (e.g. share the top use-cases the team surfaced)
-  - **Short-term** (this quarter): enablement (e.g. a subagents session)
-  - **Strategic** (longer): standardisation / tooling decisions (e.g. "make Claude Code the recommended default")
-  - Each with: specific action, suggested owner, rationale, success metric
-- *(No "Predictions" section — a weekly topic poll doesn't forecast org trends.)*
+### Chapter 5: What's next
+
+- **Hard Truths** opens the chapter: **0-2 items, each max 2 sentences — and OMIT the section entirely when nothing qualifies.** Never manufacture one to fill the box (that's the same failure as inventing quotes). Keep the name "Hard Truths".
+- **Signals to notice** (`redFlags`): skeptics worth hearing, weak content, blockers — **topic signals, NOT org risks**. Severity badges (high/moderate/low).
+- **Adoption gaps** (`adoptionGaps`): where uptake is thin, with the % and the enablement opportunity.
+- **Actions** (`recommendations`), three tiers: **Immediate** (this week), **Short-term** (this quarter), **Strategic** (longer) — each with action, owner, rationale, success metric.
+- **The verdict:** grade (A-F) + `executiveSummary.overallVerdict`, dark gradient banner, the episode's sign-off. Then "← Back to the start".
+- *(The executive summary bullets are not shown on the page — the chapters tell it in order. The result email still uses them. No "Predictions" section.)*
+
+### People (below the divider)
+
+- **Search** — filter by respondent name (search is People-only; `searchQuery` is cleared on leaving People).
+- **Respondent cards** (Alpine.js, expandable): name with **SSW profile photo** (initials fallback when unresolved or the photo 404s), average score, response count, flags, score bar. Expanded: every numeric answer with a score bar, every text answer with its question.
+- Data source: `consolidated.json → people.respondents[]`.
 
 ## Project Structure
 
@@ -324,7 +289,7 @@ python3 templates/build-consolidated.py \
   --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" [--focus "{focus}"]
 ```
 
-The `consolidator` agent's only job is a light **polish pass after the script runs**: read the produced `consolidated.json` and improve the synthesis-only fields (`executiveSummary.bullets`, `overallVerdict`, `keyMetrics` labels, `hardTruths`, and de-dup obviously-duplicated themes) with small targeted edits. It must NOT regenerate the file or rewrite the bulky arrays. If the agent is skipped, the script's output is already a valid, complete dashboard input.
+The `consolidator` agent's only job is a light **polish pass after the script runs**: read the produced `consolidated.json` and improve the synthesis-only fields (`story` beat headlines, `context.idea`, `executiveSummary.bullets`, `overallVerdict`, `hardTruths`, and de-dup obviously-duplicated themes) with small targeted edits. It must NOT regenerate the file, rewrite the bulky arrays, or change a number. If the agent is skipped, the script's output is already a valid, complete dashboard input.
 
 ## Consolidated JSON Schema (Critical Field Names)
 
@@ -344,7 +309,19 @@ The `consolidator` agent's only job is a light **polish pass after the script ru
 | **People Numeric** | `people.respondents[].numericResponses[]` | — | `value` |
 | **People Text** | `people.respondents[].textResponses[]` | — | `text` |
 
-**All quote objects** (`allQuotes`, `notableQuotes`, `standoutResponses`) MUST include a `question` field containing the question text the respondent was answering. This provides essential context for readers.
+**All quote objects** (`allQuotes`, `representativeQuote`, `notableQuotes`, `standoutResponses`, and the quotes in `story`) MUST include a `question` field (the header of the cell the quote came from) and a `qnum` (`"Q7"`). `build-consolidated.py` stamps both; a quote it can't place in one cell is dropped and counted in `consolidationNotes.untaggedDropped`.
+
+### Chapter data (added for the chapter dashboard — additive; older fields stay for the email and recap)
+
+| Field | What it holds | Built by |
+|---|---|---|
+| `context` | `{idea, rule{title,url,summary}, video{title,url,length,optional}, task{title,summary}, questions[], excluded[]}` | code catalogue + the skill's `analysis/context.json` |
+| `context.questions[]` | `{qid, number, type, text, truncated, options[], hasOther, summary, missingOptions[]}` in form order | code (`build_question_catalogue`) + skill summaries |
+| `story.beats[]` | `{headline, qids[], quotes[]}` for Chapter 2 | quantitative agent, quotes grounded + tagged |
+| `story.debates[]` | `{qids[], question, sides[{label, quotes[]}]}` for Chapter 4 (≥2 sides) | qualitative agent, quotes grounded + tagged |
+| `questionBreakdown[]` / `freeTextQuestions[]` `.number` | the item's `Q{n}` | code |
+| choice `questionBreakdown[]` | `optionOrder`, `optionNumbers`, `naOptions`, `writeIns`, `base`, `baseLabel`, `percentages`, `otherCount`, `otherPercent` (N/A left out of the base) | code |
+| `consolidationNotes.numberCheck` | `{checked, unmatched[{headline, number}]}` — beat headline `%`s not computed by code | code |
 
 **When generating the dashboard, always use these exact field names. Do NOT guess or use alternative names like `name`/`value` for free-text responses.**
 
@@ -370,7 +347,7 @@ never blocks it.
 
 ### CRITICAL: Render with the script, do NOT hand-write HTML
 
-**The dashboard is rendered by a deterministic script — `templates/build-dashboard.py` — NOT by you generating HTML token-by-token.** Hand-generating the cards does not scale: a 79-respondent People tab alone is thousands of lines of HTML, and emitting that as model output blows the job's time budget. The script fills the template's placeholders (`{{PEOPLE_CARDS}}`, `{{QUESTION_BREAKDOWN}}`, `{{THEME_CARDS}}`, `{{CHART_SCRIPTS}}`, …) from `consolidated.json` in milliseconds, following the exact Alpine.js card patterns documented inside `templates/survey-dashboard.html`.
+**The dashboard is rendered by a deterministic script — `templates/build-dashboard.py` — NOT by you generating HTML token-by-token.** Hand-generating the cards does not scale: a 79-respondent People tab alone is thousands of lines of HTML, and emitting that as model output blows the job's time budget. The script fills the template's placeholders (`{{CHAPTER_NAV}}`, `{{CHAPTER_SECTIONS}}`, `{{PEOPLE_CARDS}}`, `{{CHART_SCRIPTS}}`, …) from `consolidated.json` in milliseconds, in one pass (text inside the data is never expanded as a placeholder).
 
 Run it:
 
@@ -382,7 +359,7 @@ python3 templates/build-dashboard.py \
   surveys/{survey-name}/{date}/dashboard/index.html
 ```
 
-It generates all tabs (Overview, Responses, Themes, People, Insights & Actions), the score-distribution bar chart (`scoreDistributionChart`, mean per rating question, color-coded green ≥4 / amber ≥3 / red <4 on the 1-5 scale, sorted lowest-first), and the stance-profile radar (`emotionalRadarChart`, the six keys of `sentimentOverview.emotionalBreakdown` as percentages). The card markup, search indexes, and styling all come from the template — you do not edit the HTML by hand.
+It generates the chapters that have content (The topic, Where the team is at, In their own words, Hot takes, What's next) plus People, the Next buttons, the beat charts (HTML bars on the N/A-free base) and the stance-profile radar (`emotionalRadarChart`, the six keys of `sentimentOverview.emotionalBreakdown` as percentages). The card markup and styling come from the renderer + template — you do not edit the HTML by hand. `templates/test_dashboard_chapters.py` pins the chapter order, Next links, skipped chapters and question tags.
 
 **Do NOT generate the dashboard HTML yourself, and do NOT edit `index.html` after the script writes it.** If a section looks wrong, fix the data in `consolidated.json` (or the agent that produced it) and re-run the script — never patch the output. The renderer + the consolidated assembler are the contract; keep their field names in sync.
 
@@ -413,7 +390,7 @@ After generating the dashboard, deploy it to **surge.sh** (no Azure dependency):
 - Provide just a text summary
 - Skip any analysis agent
 - **Skip the consolidation step**
-- Generate a simple single-tab page
+- Generate a simple single-page summary
 - Skip the deployment
 - Rush through the analysis — THIS IS IMPORTANT
 - Show email addresses in any output

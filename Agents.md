@@ -2,7 +2,7 @@
 
 ## What This System Does
 
-When a user provides a CSV/XLSX survey export, the system runs 4 specialized AI analysis agents in parallel, consolidates their outputs, generates a multi-tab HTML dashboard (with an embedded narrated recap video), and deploys to an Azure Blob static website.
+When a user provides a CSV/XLSX survey export, the system runs 4 specialized AI analysis agents in parallel, consolidates their outputs, generates a chaptered HTML dashboard (with an embedded narrated recap video), and deploys to an Azure Blob static website.
 
 ## Architecture at a Glance
 
@@ -111,7 +111,7 @@ surveys/{survey-name}/
 
 **One agent, one lens.** Each agent has a single analytical responsibility. The quantitative analyzer never extracts themes; the sentiment analyzer never does demographic cross-tabs. This enables parallel execution and makes debugging straightforward.
 
-**Always consolidate before generating dashboards.** Without the consolidator: themes overlap, metrics conflict, the same topic appears in 5 tabs, and privacy rules may be violated.
+**Always consolidate before generating dashboards.** Without the consolidator: themes overlap, metrics conflict, the same topic appears in 5 chapters, and privacy rules may be violated.
 
 **Use the template, don't write HTML from scratch.** Dashboards are generated from `templates/survey-dashboard.html` by replacing `{{PLACEHOLDER}}` variables with content from `consolidated.json`.
 
@@ -123,15 +123,16 @@ surveys/{survey-name}/
 
 ### Dashboard Content
 
-**Each insight belongs to exactly one tab.** Don't repeat scores in both Responses and Overview, or discuss themes in both Themes and Insights:
+**Each insight belongs to exactly one chapter.** The dashboard is an episode you click through; don't repeat a score as a theme, or a theme as a signal:
 
-| Tab | Content |
+| Chapter | Content |
 |---|---|
-| Overview | Executive summary, key metrics, verdict, hard truths |
-| Responses | Per-question scores, distributions, skip rates |
-| Themes | Qualitative themes, emotional profile, quotes |
+| The topic | The idea, rule/video/task, every question asked (Q1…Qn), what was left out |
+| Where the team is at | Story beats over the structured answers, distributions, rule/video ratings, team stance |
+| In their own words | Free-text themes and quotes, every free-text answer |
+| Hot takes | Real disagreements (debates) and standout answers |
+| What's next | Hard truths, signals, adoption gaps, recommendations, verdict |
 | People | Individual respondent profiles, all their responses |
-| Insights & Actions | Red flags, recommendations, predictions |
 
 **Score decisively.** 7/10 is mediocre in surveys, not good. Real satisfaction starts at 8+. Don't let averages disguise reality.
 
@@ -167,7 +168,7 @@ surveys/{survey-name}/
 
 ### Modifying the Dashboard Template
 
-`templates/survey-dashboard.html` uses Tailwind CSS v4, Alpine.js (tabs), Chart.js (charts), and SSW brand colors (Red `#CC4141`, Charcoal `#333333`).
+`templates/survey-dashboard.html` uses Tailwind CSS v4, Alpine.js (chapter navigation), Chart.js (stance radar), and SSW brand colors (Red `#CC4141`, Charcoal `#333333`).
 
 1. Add `{{NEW_PLACEHOLDER}}` in the template
 2. Document expected HTML structure in CLAUDE.md

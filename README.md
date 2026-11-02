@@ -1,7 +1,7 @@
 # SSW.Walrus
 
 Turn a survey export (CSV/XLSX, e.g. Microsoft Forms) into a full report in one
-command: a branded multi-tab HTML dashboard — attributed responses, themes,
+command: a branded HTML dashboard told in chapters — attributed responses, themes,
 per-person profiles, recommendations — plus a narrated recap video, deployed to
 a public URL.
 
@@ -26,7 +26,7 @@ In any project, point the one entry-point skill at a survey export:
 
 That runs everything — four analysis agents in parallel, deterministic
 consolidation (bulk data extracted from the raw file, quotes verified against
-it), the multi-tab HTML dashboard, the narrated recap video, and a surge.sh
+it), the chaptered HTML dashboard, the narrated recap video, and a surge.sh
 deploy — and writes it all to `surveys/<name>/<date>/` in your current
 directory. The stages are also installed individually so you can iterate on one
 without re-running the rest:
@@ -88,7 +88,7 @@ Cloning this repo also works — the same skills are picked up from
 
 [`docs/how-it-works.md`](docs/how-it-works.md) walks the pipeline end to end
 (analysis → dashboard → recap → email), including the SSW branding and the
-SSW.People profile-photo resolution used on the People tab and in the video.
+SSW.People profile-photo resolution used on the People list and in the video.
 
 ## Developing this repo
 

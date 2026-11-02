@@ -20,6 +20,10 @@ This is NOT an employee-engagement survey. Do not produce health scores, grades,
 
 **Demote admin/process questions:** the retreat nag and the free-lunch-order question are logistics — exclude them from the topic analysis entirely (note their existence in `excludedQuestions`). "Are you blocked?" + its follow-up are a team pulse, not topic data — surface counts only, lightly.
 
+## The question catalogue (given to you)
+
+The skill hands you the **question catalogue** (`question-catalogue.py` output, also in `analysis/context.json`): every topic question in form order with its `qid` (`q3`, `qt2`, …), its number (`Q1`…`Qn`), type, options and — for every choice question — the code-computed `percentages` on a base that **leaves out N/A answers** ("N/A - I'm not a dev"). Use those qids in `beats[]`, and take every percentage you put in a headline from the catalogue numbers, never your own arithmetic. Say the base the way the code does: "of 43 devs" when the N/A option is a "not a dev" option, otherwise "of 43 who answered".
+
 ## Your task
 
 **Read the FULL raw data file first — every row.** Note: `build-consolidated.py` now extracts the bulk data (individual responses, tallies, means, distributions) directly from the raw file in code, so your `individualResponses` arrays and computed numbers are used as cross-checks and for your own analysis — the dashboard's hard numbers come from the file, not from you. NEVER estimate, round, or invent a number or response: compute from the actual rows (use `python3` if the file is large), and copy responses character-for-character.
@@ -32,6 +36,12 @@ This is NOT an employee-engagement survey. Do not produce health scores, grades,
 5. **Adoption headline**: the single most useful structured finding (e.g. "Claude Code is the runaway daily-driver favourite — 60% of those with a pick").
 
 **De-emphasise the video & rule ratings.** Still compute them, but the insight almost never lives in those two near-identical 4.x/5 content scores — they're not the story. Lead your reception summary and adoption headline with the **choice/multi-select signal and the task-value rating**, and treat the video/rule means as minor supporting detail (a low one is worth flagging; a high one is not a headline). The dashboard's headline metrics deliberately exclude video/rule for the same reason.
+
+6. **Story beats** for Chapter 2 of the dashboard ("Where the team is at"): 3–6 beats, **biggest finding first**. Each beat is one plain-words headline a podcast host could read out ("77% of devs fix the config, not the chat"), the `qids` it is about, and optionally 1–2 **verbatim** quotes (`name` + exact cell `text`) that explain the number. One question per beat, unless the beat is a cross-question split that matters ("Weekly tinkerers want the nightly job (74%); monthly-or-less, not so much (47%)"). Rules:
+   - Headline percentages must be numbers from the catalogue for that question. `build-consolidated.py` checks every `N%` in a single-question beat and flags any it didn't compute.
+   - Keep headlines short: one sentence, no names lists.
+   - Never lead with the video or rule rating; the dashboard puts those last anyway.
+   - Fewer, real beats beat padding. A question with nothing interesting gets no beat; it still shows in the chapter.
 
 Use whole numbers for stats in prose.
 
@@ -101,6 +111,21 @@ Use whole numbers for stats in prose.
     }
   ],
 
+  "beats": [
+    {
+      "headline": "77% of devs fix the config, not the chat",
+      "qids": ["q4"],
+      "quotes": [
+        { "name": "Hark Singh", "text": "the exact text of their cell, copied character for character" }
+      ]
+    },
+    {
+      "headline": "Only 2 of 43 devs run retros on their agent sessions",
+      "qids": ["q4"],
+      "quotes": []
+    }
+  ],
+
   "topicReception": {
     "verdict": "Strongly positive — the team has broadly adopted AI CLI tools and rates the rule and task highly.",
     "ruleRating": 4.2,
@@ -128,10 +153,6 @@ Use whole numbers for stats in prose.
   "focusDeepDive": null
 }
 ```
-
-## Multi-survey data
-
-If multiple files are provided, tag each question with a `surveySource` (from the filename) and group results by source. Omit when a single file is provided.
 
 ## Your standards
 

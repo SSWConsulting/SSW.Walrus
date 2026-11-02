@@ -12,6 +12,26 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <script>
+        // Chapter state. The URL hash names the open chapter (#team), so a
+        // chapter can be linked directly; Next buttons call go() and scroll up.
+        function dashboard() {
+            return {
+                chapters: {{CHAPTER_IDS}},
+                activeTab: 'topic',
+                searchQuery: '',
+                init() {
+                    const h = location.hash.slice(1);
+                    if (this.chapters.includes(h)) this.activeTab = h;
+                    this.$watch('activeTab', v => history.replaceState(null, '', '#' + v));
+                },
+                go(id) {
+                    this.activeTab = id;
+                    window.scrollTo(0, 0);
+                }
+            };
+        }
+    </script>
+    <script>
         // Tailwind config aligned to the SSW Design System tokens
         // (values from @sswconsulting/design-system). ssw-* scales kept for the
         // generated content, brand reds nudged to the DS primary #CD4242.
@@ -161,6 +181,27 @@
         .ds-navitem:hover { background: var(--fill-weak); color: var(--foreground); }
         .ds-navitem--active { background: rgba(205,66,66,0.08); color: var(--primary); font-weight: 600; }
         .ds-navitem svg { width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+        .ds-navnum { font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem; opacity: 0.7; margin-right: -0.35rem; }
+        .ds-navdivider { height: 1px; background: var(--border); margin: 0.75rem 0.5rem; }
+        .ds-nextbtn {
+            display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.25rem;
+            border-radius: var(--radius-lg); background: var(--primary); color: var(--primary-foreground);
+            font-weight: 600; font-size: 1rem; border: 0; cursor: pointer; box-shadow: var(--shadow-raised);
+        }
+        .ds-nextbtn:hover { background: #A33636; }
+
+        /* Question tag (Q4) — every beat, chart and quote points back to Chapter 1 */
+        .qtag {
+            display: inline-flex; align-items: center; flex-shrink: 0;
+            font-family: 'IBM Plex Mono', ui-monospace, monospace; font-size: 0.75rem; font-weight: 600;
+            line-height: 1; padding: 0.25rem 0.45rem; border-radius: var(--radius-sm);
+            background: var(--fill-weak); color: var(--secondary); border: 1px solid var(--border);
+        }
+        .opt-chip {
+            display: inline-block; font-size: 0.75rem; padding: 0.2rem 0.55rem; border-radius: 9999px;
+            background: #F4F4F5; color: #3F3F46;
+        }
+        .opt-chip--deduced { background: white; border: 1px dashed #A1A1AA; color: #71717A; }
         .ds-topbar {
             display: flex; align-items: center; justify-content: space-between; gap: 1rem;
             padding: 1rem 1.75rem; background: var(--background-base);
@@ -430,31 +471,12 @@
             color: #CC4141;
         }
 
-        /* Survey group divider (multi-survey mode) */
-        .survey-group-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            margin: 1.5rem 0 1rem 0;
-            background: #F4F4F5;
-            border-left: 4px solid #CC4141;
-            border-radius: 0 8px 8px 0;
-        }
-        .survey-group-header:first-child {
-            margin-top: 0;
-        }
-        .survey-group-header h3 {
-            font-size: 1rem;
-            font-weight: 600;
-            color: #333333;
-            margin: 0;
-        }
-        .survey-group-header .survey-group-count {
-            font-size: 0.8rem;
-            color: #71717A;
-            font-weight: 500;
-        }
+        /* Story beats: one headline, one chart, a few faces */
+        .beat h3 { letter-spacing: -0.01em; line-height: 1.25; }
+        .beat--quiet { background: #FAFAFA; box-shadow: none; }
+        .beat-bar .score-bar { height: 14px; }
+        .faces-row { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+        .debate-side { border-top: 3px solid #CD4242; padding-top: 1rem; }
         /* SSW profile-photo avatars (People tab) — fall back to initials */
         .avatar {
             border-radius: 9999px;
@@ -479,7 +501,7 @@
     </style>
 </head>
 <body>
-    <div x-data="{ activeTab: 'overview', searchQuery: '' }"
+    <div x-data="dashboard()"
          x-effect="if (activeTab !== 'people' && searchQuery !== '') searchQuery = ''"
          class="ds-shell">
 
@@ -488,28 +510,9 @@
             <div class="flex items-center px-2 mb-7">
                 <img src="{{SSW_LOGO}}" alt="SSW" class="h-7 w-auto" />
             </div>
-            <p class="px-3 mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-ssw-gray-400">Report</p>
+            <p class="px-3 mb-2 text-[0.7rem] font-semibold uppercase tracking-wider text-ssw-gray-400">Chapters</p>
             <nav class="flex flex-col gap-1">
-                <button @click="activeTab = 'overview'" :class="activeTab === 'overview' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                    <span>Overview</span>
-                </button>
-                <button @click="activeTab = 'responses'" :class="activeTab === 'responses' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="20" x2="4" y2="12"/><line x1="10" y1="20" x2="10" y2="4"/><line x1="16" y1="20" x2="16" y2="9"/><line x1="22" y1="20" x2="2" y2="20"/></svg>
-                    <span>Responses</span>
-                </button>
-                <button @click="activeTab = 'themes'" :class="activeTab === 'themes' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                    <span>Themes</span>
-                </button>
-                <button @click="activeTab = 'people'" :class="activeTab === 'people' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    <span>People</span>
-                </button>
-                <button @click="activeTab = 'insights'" :class="activeTab === 'insights' ? 'ds-navitem ds-navitem--active' : 'ds-navitem'">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/></svg>
-                    <span>Insights &amp; Actions</span>
-                </button>
+                {{CHAPTER_NAV}}
             </nav>
             <div class="mt-auto px-3 pt-6 text-[0.7rem] text-ssw-gray-400 leading-relaxed">
                 Chewing the Fat — weekly tech-topic digest
@@ -522,7 +525,7 @@
             <header class="ds-topbar">
                 <div class="min-w-0">
                     <h1 class="text-lg md:text-2xl text-ssw-charcoal truncate"><span class="font-bold">{{SURVEY_NAME}}</span></h1>
-                    <p class="text-ssw-gray-500 text-sm font-medium">Survey Analysis Dashboard &middot; {{RESPONSE_COUNT}} responses &middot; {{COMPLETION_RATE}}% completion{{PER_SURVEY_COUNTS}}</p>
+                    <p class="text-ssw-gray-500 text-sm font-medium">Survey Analysis Dashboard &middot; {{RESPONSE_COUNT}} responses &middot; {{COMPLETION_RATE}}% completion</p>
                 </div>
                 <div class="text-right flex-shrink-0">
                     <p class="text-base md:text-lg font-bold text-ssw-red">{{DATE}}</p>
@@ -531,11 +534,7 @@
 
             <!-- Mobile tab row (sidebar is hidden below lg) -->
             <div class="ds-topbar-tabs no-print gap-1 px-4 py-2 overflow-x-auto border-b border-ssw-gray-200 bg-white">
-                <template x-for="t in [['overview','Overview'],['responses','Responses'],['themes','Themes'],['people','People'],['insights','Insights']]" :key="t[0]">
-                    <button @click="activeTab = t[0]" x-text="t[1]"
-                            :class="activeTab === t[0] ? 'bg-ssw-red text-white' : 'bg-white text-ssw-charcoal border border-ssw-gray-200'"
-                            class="px-3 py-1.5 rounded-ds-sm text-sm font-semibold whitespace-nowrap"></button>
-                </template>
+                {{CHAPTER_TABS}}
             </div>
 
             <main class="ds-main">
@@ -546,199 +545,16 @@
                     <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
                     <button @click="$dispatch('collapse-all')" title="Collapse all cards">Collapse All</button>
                 </div>
-                <!-- Responses & Themes: expand/collapse only (no search box) -->
-                <div x-show="activeTab === 'responses' || activeTab === 'themes'" x-cloak class="search-toolbar no-print" style="justify-content:flex-end">
+                <!-- Story chapters with cards: expand/collapse only (no search box) -->
+                <div x-show="['team', 'words', 'takes'].includes(activeTab)" x-cloak class="search-toolbar no-print" style="justify-content:flex-end">
                     <button @click="$dispatch('expand-all')" title="Expand all cards">Expand All</button>
                     <button @click="$dispatch('collapse-all')" title="Collapse all cards">Collapse All</button>
                 </div>
 
-            <!-- Overview Tab -->
-            <div x-show="activeTab === 'overview'" x-cloak>
-                <!-- This week's recap video (injected only when a walkthrough was recorded) -->
-                {{RECAP_VIDEO}}
-
-                <!-- Key Metrics -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                    {{KEY_METRICS_CARDS}}
-                </div>
-
-                <!-- Executive Summary -->
-                <section class="ssw-card p-6 mb-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-3 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Executive Summary
-                    </h2>
-                    <ul class="space-y-2 text-ssw-gray-600 leading-relaxed">
-                        {{EXECUTIVE_SUMMARY}}
-                    </ul>
-                </section>
-
-                <!-- Hard Truths (high placement; whole section omitted when there are none) -->
-                {{HARD_TRUTHS_SECTION}}
-
-                <!-- Overall Verdict -->
-                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-ds shadow-lg p-6 text-white mb-6">
-                    <div class="flex items-center justify-between">
-                        <div>
-                            <h2 class="text-lg font-bold">Overall Verdict</h2>
-                            <p class="text-ssw-gray-300 mt-1">{{OVERALL_VERDICT}}</p>
-                        </div>
-                        <div class="text-4xl font-bold">{{OVERALL_GRADE}}</div>
-                    </div>
-                </section>
-
-                <!-- Focus Area Summary (if applicable) -->
-                {{FOCUS_SUMMARY}}
-
-                <!-- Standout Responses (notable individual answers worth highlighting) -->
-                {{STANDOUT_RESPONSES}}
-            </div>
-
-            <!-- Responses Tab -->
-            <div x-show="activeTab === 'responses'" x-cloak>
-                <!-- Score Distribution Chart -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Score Distribution Overview
-                    </h2>
-                    <div class="max-w-3xl mx-auto">
-                        <canvas id="scoreDistributionChart"></canvas>
-                    </div>
-                </section>
-
-                <!-- Question Breakdown (Interactive Expandable Cards) -->
-                <!-- Multi-survey: Use {{SURVEY_GROUP_HEADER}} before each group of questions from the same survey.
-                     Format: <div class="survey-group-header"><h3>Survey Name</h3><span class="survey-group-count">N responses</span></div>
-                     Single-survey: Omit survey group headers entirely.
-
-                     Each question card MUST follow this Alpine.js pattern:
-
-                     NUMERIC QUESTION CARD:
-                     <div x-data="{ open: false, showAll: false }"
-                          @expand-all.window="open = true"
-                          @collapse-all.window="open = false"
-                          x-show="!searchQuery || 'LOWERCASE_SEARCH_INDEX'.includes(searchQuery.toLowerCase())"
-                          class="bg-white rounded-lg border border-ssw-gray-200 overflow-hidden">
-                       <div class="question-card-header p-4 flex items-center justify-between" @click="open = !open">
-                         <div class="flex-1">
-                           <p class="font-semibold text-ssw-charcoal text-sm">Q: Question text here</p>
-                           <div class="flex items-center gap-3 mt-2">
-                             <div class="score-bar flex-1 max-w-xs"><div class="score-bar-fill score-{high|medium|low}" style="width: {pct}%"></div></div>
-                             <span class="text-sm font-bold">{mean}/{scale}</span>
-                             <span class="flag-badge">flag text</span>
-                           </div>
-                         </div>
-                         <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
-                       </div>
-                       <template x-if="open">
-                         <div class="question-card-body p-4">
-                           <p class="text-sm text-ssw-gray-600 mb-3">Commentary text here</p>
-                           <div class="distribution-bar mb-3" title="Distribution: ...">segments...</div>
-                           <div class="flex flex-wrap gap-4 text-xs text-ssw-gray-500 mb-3">
-                             <span>Skip rate: N%</span><span>SD: X</span><span>Shape: normal</span>
-                           </div>
-                           <div class="text-xs text-ssw-gray-500 mb-2 font-semibold">Correlations / Flags details...</div>
-                           <h4 class="text-sm font-semibold text-ssw-charcoal mt-4 mb-2">Individual Responses</h4>
-                           <div class="response-list">
-                             ...first 20 response-items...
-                             <template x-if="!showAll">
-                               <button class="show-more-btn" @click="showAll = true">Show N more responses</button>
-                             </template>
-                             <template x-if="showAll">
-                               ...remaining response-items...
-                             </template>
-                           </div>
-                         </div>
-                       </template>
-                     </div>
-
-                     FREE-TEXT QUESTION CARD:
-                     Same pattern but shows text responses instead of score bar.
-                     Collapsed: question text + response count badge + chevron
-                     Expanded: all text responses with respondent names, paginated at 20
-
-                     SEARCH INDEX: Bake a lowercase string (max 500 chars) into the x-show expression
-                     containing question text + insight + flag text for fast client-side filtering.
-                -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-6 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Question-by-Question Breakdown
-                    </h2>
-                    <div class="space-y-3">
-                        {{QUESTION_BREAKDOWN}}
-                    </div>
-                </section>
-            </div>
-
-            <!-- Themes Tab -->
-            <div x-show="activeTab === 'themes'" x-cloak>
-                <!-- Sentiment Overview -->
-                <section class="bg-gradient-to-r from-ssw-charcoal to-ssw-gray-700 rounded-xl shadow-lg p-6 text-white mb-6">
-                    <h2 class="text-lg font-bold mb-2">Topic Stance</h2>
-                    {{SENTIMENT_OVERVIEW}}
-                </section>
-
-                <!-- Stance Profile Radar Chart -->
-                <section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Stance Profile
-                    </h2>
-                    <div class="radar-chart-container">
-                        <canvas id="emotionalRadarChart"></canvas>
-                    </div>
-                </section>
-
-                <!-- Theme Cards (Interactive Expandable) -->
-                <!--
-                     Each theme card MUST follow this Alpine.js pattern:
-
-                     <div x-data="{ open: false }"
-                          @expand-all.window="open = true"
-                          @collapse-all.window="open = false"
-                          x-show="!searchQuery || 'LOWERCASE_SEARCH_INDEX'.includes(searchQuery.toLowerCase())"
-                          class="theme-card theme-{sentiment} bg-white rounded-lg p-4">
-                       <div class="question-card-header flex items-center justify-between" @click="open = !open">
-                         <div class="flex-1">
-                           <div class="flex items-center gap-2">
-                             <h3 class="font-semibold text-ssw-charcoal">Theme Name</h3>
-                             <span class="text-xs font-medium px-2 py-0.5 rounded-full bg-ssw-gray-100">N responses (X%)</span>
-                           </div>
-                           <p class="quote-block text-sm mt-2">"Representative quote here"</p>
-                           <p class="quote-attribution">— Respondent Name</p>
-                         </div>
-                         <span class="chevron-icon ml-3 text-ssw-gray-400" :class="open && 'open'">▼</span>
-                       </div>
-                       <template x-if="open">
-                         <div class="question-card-body pt-4 mt-3">
-                           <div class="flex flex-wrap gap-3 text-xs text-ssw-gray-500 mb-3">
-                             <span>Actionability: high</span>
-                             <span>Appears in: Q2, Q5, Q7</span>
-                           </div>
-                           <h4 class="text-sm font-semibold text-ssw-charcoal mb-2">All Quotes (N)</h4>
-                           <div class="response-list space-y-2">
-                             ...all quote items with respondent attribution...
-                           </div>
-                         </div>
-                       </template>
-                     </div>
-
-                     SEARCH INDEX: Bake theme name + representative quote + respondent names
-                     (max 500 chars) into the x-show expression.
-                -->
-                <section>
-                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Key Themes from Free-Text Responses
-                    </h2>
-                    <div class="space-y-4">
-                        {{THEME_CARDS}}
-                    </div>
-                </section>
-                <!-- Notable Quotes section removed — redundant with the theme quotes above. -->
-            </div>
+            <!-- Story chapters (rendered by build-dashboard.py; an empty chapter
+                 is skipped — no nav item, no section). Each chapter is a run of
+                 beats and ends with a "Next: {chapter} →" button. -->
+            {{CHAPTER_SECTIONS}}
 
             <!-- People Tab -->
             <!--
@@ -787,7 +603,7 @@
 
                  SEARCH INDEX: Bake respondent name (lowercase) into x-show expression.
             -->
-            <div x-show="activeTab === 'people'" x-cloak>
+            <div data-chapter="people" x-show="activeTab === 'people'" x-cloak>
                 <section class="bg-white rounded-xl shadow-sm ssw-card p-6">
                     <h2 class="text-lg text-ssw-charcoal mb-2 flex items-center">
                         <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
@@ -800,33 +616,6 @@
                 </section>
             </div>
 
-            <!-- Insights & Actions Tab -->
-            <div x-show="activeTab === 'insights'" x-cloak>
-                <!-- Signals to Notice -->
-                <section class="mb-6 bg-ssw-red-50 border-2 border-ssw-red border-dashed rounded-xl p-6">
-                    <h2 class="text-lg text-ssw-red font-bold mb-4">Signals to Notice</h2>
-                    {{RED_FLAGS}}
-                </section>
-
-                <!-- Adoption Gaps -->
-                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
-                        <span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>
-                        Adoption Gaps
-                    </h2>
-                    {{RISK_RADAR}}
-                </section>
-
-                <!-- Recommendations -->
-                <section class="mb-6 bg-white rounded-xl shadow-sm ssw-card p-6">
-                    <h2 class="text-lg text-ssw-charcoal mb-4 flex items-center">
-                        <span class="w-3 h-3 bg-green-600 rounded-full mr-2"></span>
-                        Recommendations
-                    </h2>
-                    {{RECOMMENDATIONS}}
-                </section>
-
-            </div>
         </main>
 
         <!-- SSW Branded Footer -->

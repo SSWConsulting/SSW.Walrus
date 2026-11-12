@@ -45,7 +45,7 @@ Covers every install mode: Claude plugin (whole repo ships), a clone of this rep
 2. ✅ Detects question types (numeric, free-text, demographic)
 3. ✅ Orchestrates **4 specialized analysis agents** in parallel
 4. ✅ Runs **consolidation** to ensure consistency and deduplication
-5. ✅ Creates a **chaptered HTML dashboard**: The topic → Where the team is at → In their own words → Hot takes → What's next, then People
+5. ✅ Creates a **chaptered HTML dashboard**: The topic → Where the team is at → In their own words → Hot takes → What's next, then People (and a **Blockers** section when the survey carries the standing blocked question)
 6. ✅ Deploys to **surge.sh**
 7. ✅ Returns a **public URL**
 
@@ -120,6 +120,7 @@ Covers every install mode: Claude plugin (whole repo ships), a clone of this rep
 
 Pass each agent:
 - The **path to the raw survey file(s)** — each agent MUST read the FULL file itself (every row, every response). NEVER pass a summary, excerpt, or paraphrase of the data instead of the file: agents fed a summary have been observed to fabricate plausible per-person responses (95% of quotes on one deployed dashboard were invented). If the file is XLSX, note that `build-consolidated.py`'s `load_rows` reads XLSX directly and agents can dump it with `python3 -c "import openpyxl; ..."` — do not retype the contents for them.
+- **The standing "are you blocked?" question is not theirs.** `build-consolidated.py` extracts it from the raw file into the **Blockers** tab, and the agent prompts tell them to skip it. Do not ask an agent to count, tally, or theme it — that is how the same fact ends up on two tabs with two different numbers.
 - Note: agents do NOT need to emit exhaustive `individualResponses` arrays — `build-consolidated.py` extracts all bulk data (responses, tallies, means, people) directly from the raw file in code. Agent JSON is used for **analysis only** (themes, quotes, commentary, signals), and every quote they emit is verified against the raw file.
 - The **question catalogue** from Step 1 (the agents use its qids and its code-computed percentages)
 - The focus prompt (if provided)
@@ -147,8 +148,8 @@ Pass each agent:
    - Skeptics & dissent worth hearing
    - Adoption gaps (where uptake is thin)
    - Content / poll issues (weak video/rule, confusing questions)
-   - Blockers (scrum side-signal)
    - Recommendations
+   - **Not blockers** — see below
 
 ### Step 3: CONSOLIDATION (run the assembler script)
 
@@ -158,8 +159,14 @@ Consolidation is a **deterministic script**, not the consolidator agent hand-wri
 python3 "$WALRUS_ROOT/templates/build-consolidated.py" \
   surveys/{survey-name}/{date}/analysis \
   --survey-name "{topic}" --topic "{topic}" \
-  --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" [--focus "{focus}"]
+  --date "{DD/MM/YYYY}" --rule-url "{ssw rule url}" \
+  --blocked-by "Adam" [--focus "{focus}"]
 ```
+
+**`--blocked-by`** names whoever the standing "are you blocked?" question is asked in the
+voice of — on an SSW CTF form, always **Adam**. The file never records who "me" is, so
+without the flag that group is labelled "the person who asked". Omit it only for a survey
+that is not a CTF form.
 
 It reads the four agent files plus `context.json` and writes a complete `analysis/consolidated.json` with the exact field names the dashboard, email and recap video bind to (cross-validates, pivots people, excludes emails, demotes logistics). It also:
 - carries `context` (the catalogue + your summaries) and `story` (beats + debates);
@@ -186,7 +193,7 @@ python3 "$WALRUS_ROOT/templates/build-dashboard.py" \
   surveys/{survey-name}/{date}/dashboard/index.html
 ```
 
-**Do NOT hand-write the dashboard HTML and do NOT edit `index.html` after the script writes it.** If something looks wrong, fix the data in `consolidated.json` (or the agent that produced it) and re-run the renderer — never patch the output. The chapters (The topic, Where the team is at, In their own words, Hot takes, What's next — a chapter with nothing real that week is skipped) plus People, the Next buttons, question tags, search/expand toolbar and styling all come from the template + renderer.
+**Do NOT hand-write the dashboard HTML and do NOT edit `index.html` after the script writes it.** If something looks wrong, fix the data in `consolidated.json` (or the agent that produced it) and re-run the renderer — never patch the output. The chapters (The topic, Where the team is at, In their own words, Hot takes, What's next — a chapter with nothing real that week is skipped) plus People (and **Blockers**, only when the survey has the standing blocked question), the Next buttons, question tags, search/expand toolbar and styling all come from the template + renderer.
 
 Output: `surveys/{survey-name}/{date}/dashboard/index.html`
 

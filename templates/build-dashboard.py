@@ -583,6 +583,129 @@ def render_recommendations(recs):
 
 
 # ---------------------------------------------------------------------------
+# Blockers tab — the standing "was anyone blocking you?" question
+# ---------------------------------------------------------------------------
+# Owned exclusively by this tab: who is blocked, who by, and what the block is.
+# The whole tab (and its nav item) disappears when the survey has no such
+# question, which is every survey that is not a CTF form.
+
+_BLOCKER_TONE = {
+    "high": ("bg-ssw-red-50", "border-ssw-red", "severity-critical"),
+    "moderate": ("bg-amber-50", "border-amber-400", "severity-high"),
+    "low": ("bg-white", "border-ssw-gray-300", "severity-moderate"),
+    # no duration stated (the "someone else" option carries none) — its own grey,
+    # so it never reads as an equivalent of the shortest duration
+    None: ("bg-ssw-gray-50", "border-ssw-gray-300", "severity-moderate"),
+}
+
+def _blocker_stat(label, value, context, tone="text-ssw-charcoal"):
+    return (
+        '<div class="bg-white rounded-xl shadow-sm ssw-card p-4">'
+        f'<p class="text-xs text-ssw-gray-500 font-semibold uppercase tracking-wide">{esc(label)}</p>'
+        f'<p class="text-2xl font-bold {tone} mt-1">{esc(value)}</p>'
+        f'<p class="text-xs text-ssw-gray-400 mt-1">{esc(context)}</p>'
+        '</div>'
+    )
+
+
+def _blocker_person_card(p):
+    bg, border, badge = _BLOCKER_TONE.get(p.get("severity"), _BLOCKER_TONE[None])
+    label = p.get("severityLabel")
+    badge_html = (f'<span class="{badge} text-xs px-2 py-0.5 rounded-full">{esc(label)}</span>'
+                  if label else "")
+    detail = p.get("detail")
+    body = (f'<blockquote class="quote-block">&ldquo;{esc(detail)}&rdquo;</blockquote>'
+            if detail else
+            '<p class="text-sm text-ssw-gray-500">No detail given — worth asking them.</p>')
+    return (
+        f'<div class="{bg} border-l-4 {border} rounded-r-lg p-4">'
+        '<div class="flex items-center gap-3 mb-2 flex-wrap">'
+        + avatar_html(p.get("respondent"), p.get("photoUrl"), px=32)
+        + f'<span class="font-semibold text-ssw-charcoal">{esc(p.get("respondent"))}</span>'
+        + badge_html
+        + '<span class="text-xs text-ssw-gray-500 ml-auto">Blocked by '
+        f'<strong class="text-ssw-charcoal">{esc(p.get("blockedBy"))}</strong></span>'
+        '</div>' + body + '</div>'
+    )
+
+
+def render_blockers_tab(b):
+    if not b:
+        return ""
+    people = b.get("people") or []
+    blocked = b.get("blockedCount") or 0
+    total = b.get("responseCount") or 0
+    high = (b.get("severityCounts") or {}).get("high") or 0
+    owner = b.get("blockedBy") or "the person who asked"
+
+    tiles = "".join([
+        _blocker_stat("Blocked this week", blocked, f"of {total} who answered",
+                      "text-ssw-red" if blocked
+                      else "text-ssw-charcoal" if b.get("needsReview")
+                      else "text-green-600"),
+        _blocker_stat(f"Blocked by {owner}", b.get("byOwner") or 0,
+                      "the standing question's own option"),
+        _blocker_stat("Blocked by someone else", b.get("bySomeoneElse") or 0,
+                      "a colleague, not " + owner),
+        _blocker_stat("More than a day", high, "the most severe option on the form",
+                      "text-ssw-red" if high else "text-ssw-charcoal"),
+    ])
+
+    if people:
+        cards = '<div class="space-y-3">' + "".join(_blocker_person_card(p) for p in people) + '</div>'
+    elif b.get("needsReview"):
+        # Never claim an all-clear over the top of answers nobody has classified —
+        # one of them may well say "Yes - for more than a day".
+        cards = ('<div class="bg-amber-50 border-l-4 border-amber-400 rounded-r-lg p-4">'
+                 '<p class="text-ssw-charcoal">Nobody could be counted automatically, but the '
+                 'answers below were typed in by hand and still need a read.</p></div>')
+    else:
+        cards = ('<div class="bg-green-50 border-l-4 border-green-600 rounded-r-lg p-4">'
+                 '<p class="text-ssw-charcoal">Nobody reported being blocked this week.</p></div>')
+
+    review = ""
+    if b.get("needsReview"):
+        items = "".join(
+            '<div class="bg-white rounded-lg p-3 mb-2 border border-ssw-gray-200">'
+            f'<p class="font-semibold text-ssw-charcoal text-sm">{esc(r.get("respondent"))}</p>'
+            f'<p class="text-sm text-ssw-charcoal">{esc(r.get("answer"))}</p>'
+            + (f'<p class="text-sm text-ssw-gray-600 mt-1">{esc(r.get("detail"))}</p>'
+               if r.get("detail") else "")
+            + '</div>'
+            for r in b["needsReview"]
+        )
+        review = (
+            '<section class="mb-6 bg-amber-50 border-l-4 border-amber-400 rounded-r-ds p-6">'
+            '<h2 class="text-lg text-ssw-charcoal mb-2 font-bold">Typed their own answer — read these</h2>'
+            '<p class="text-sm text-ssw-charcoal mb-4">Not counted above. These went in the '
+            '&ldquo;Other&rdquo; box, and the prose often contradicts the word it opens with, '
+            'so a person decides what they mean.</p>'
+            + items + '</section>'
+        )
+
+    question = b.get("question") or ""
+    detail_q = b.get("detailQuestion") or ""
+    footnote = (
+        '<p class="text-xs text-ssw-gray-400 mt-6">Asked as: &ldquo;'
+        + esc(question) + '&rdquo;'
+        + (' &middot; follow-up: &ldquo;' + esc(detail_q) + '&rdquo;' if detail_q else "")
+        + '</p>'
+    )
+
+    return (
+        '<div data-chapter="blockers" x-show="activeTab === \'blockers\'" x-cloak>'
+        f'<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">{tiles}</div>'
+        '<section class="bg-white rounded-xl shadow-sm ssw-card p-6 mb-6">'
+        '<h2 class="text-lg text-ssw-charcoal mb-2 flex items-center">'
+        '<span class="w-3 h-3 bg-ssw-red rounded-full mr-2"></span>'
+        'Who is blocked, and what by</h2>'
+        '<p class="text-sm text-ssw-gray-500 mb-6">Self-reported. The form defines blocked as '
+        'having tried about twice over two days, leaving a message each time.</p>'
+        + cards + footnote + '</section>' + review + '</div>'
+    )
+
+
+# ---------------------------------------------------------------------------
 # Charts
 # ---------------------------------------------------------------------------
 
@@ -636,6 +759,7 @@ _ICONS = {
     "takes": '<path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/>',
     "next": '<path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.3 1 2.1h6c0-.8.4-1.6 1-2.1A7 7 0 0 0 12 2z"/>',
     "people": '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+    "blockers": '<circle cx="12" cy="12" r="10"/><line x1="4.9" y1="4.9" x2="19.1" y2="19.1"/>',
 }
 
 
@@ -662,20 +786,29 @@ def _nav_button(cid, label, number=None):
     )
 
 
-def render_chapter_nav(present):
+def extras_present(c):
+    """The sections below the divider, outside the story. Blockers only when the
+    survey carries the standing blocked question."""
+    extras = [("people", "People")]
+    if c.get("blockers"):
+        extras.append(("blockers", "Blockers"))
+    return extras
+
+
+def render_chapter_nav(present, extras):
     items = [_nav_button(cid, CHAPTER_NAMES[cid], i) for i, cid in enumerate(present, 1)]
     items.append('<div class="ds-navdivider"></div>')
-    items.append(_nav_button("people", "People"))
+    items += [_nav_button(cid, label) for cid, label in extras]
     return "".join(items)
 
 
-def render_chapter_tabs(present):
+def render_chapter_tabs(present, extras):
     """Mobile tab row (the sidebar is hidden below lg)."""
     return "".join(
         f'<button @click="go(\'{cid}\')" '
         f':class="activeTab === \'{cid}\' ? \'bg-ssw-red text-white\' : \'bg-white text-ssw-charcoal border border-ssw-gray-200\'" '
         f'class="px-3 py-1.5 rounded-ds-sm text-sm font-semibold whitespace-nowrap">{esc(label)}</button>'
-        for cid, label in [(c, CHAPTER_NAMES[c]) for c in present] + [("people", "People")]
+        for cid, label in [(c, CHAPTER_NAMES[c]) for c in present] + extras
     )
 
 
@@ -1170,10 +1303,11 @@ def main():
         "next": lambda: render_next_chapter(c),
     }
 
+    extras = extras_present(c)
     replacements = {
-        "{{CHAPTER_IDS}}": json.dumps(present + ["people"]),
-        "{{CHAPTER_NAV}}": render_chapter_nav(present),
-        "{{CHAPTER_TABS}}": render_chapter_tabs(present),
+        "{{CHAPTER_IDS}}": json.dumps(present + [cid for cid, _ in extras]),
+        "{{CHAPTER_NAV}}": render_chapter_nav(present, extras),
+        "{{CHAPTER_TABS}}": render_chapter_tabs(present, extras),
         "{{CHAPTER_SECTIONS}}": "".join(_chapter_section(cid, present, bodies[cid]()) for cid in present),
         "{{SSW_LOGO}}": logo_data_uri(),
         "{{SURVEY_NAME}}": esc(meta.get("surveyName") or meta.get("topic") or "Survey"),
@@ -1181,6 +1315,7 @@ def main():
         "{{RESPONSE_COUNT}}": esc(meta.get("responseCount") or 0),
         "{{COMPLETION_RATE}}": esc(meta.get("completionRate") or 100),
         "{{PEOPLE_CARDS}}": render_people_cards(c.get("people")),
+        "{{BLOCKERS_TAB}}": render_blockers_tab(c.get("blockers")),
         "{{CHART_SCRIPTS}}": render_chart_scripts(c),
         "{{GENERATED_AT}}": esc(f"Generated from {meta.get('responseCount', 0)} responses"),
     }
@@ -1196,7 +1331,9 @@ def main():
     qn = len(c.get("questionBreakdown") or [])
     ft = len(c.get("freeTextQuestions") or [])
     pe = len((c.get("people") or {}).get("respondents") or [])
-    print(f"[build-dashboard] wrote {out_path} ({qn} questions, {ft} free-text, {pe} people)")
+    bl = c.get("blockers")
+    blocked = f", {bl.get('blockedCount', '?')} blocked" if isinstance(bl, dict) else ""
+    print(f"[build-dashboard] wrote {out_path} ({qn} questions, {ft} free-text, {pe} people{blocked})")
 
 
 if __name__ == "__main__":

@@ -16,9 +16,8 @@ For a topic like AI CLI tools, the open questions are things like:
 - *"Your current project — name"* (context only, and it names clients: never quote it, never theme it)
 - The "✨IMPORTANT" prompt asking for experiences + rule feedback
 - The general *"Any comments?"* box (often about YakShaver/process — keep but treat as secondary)
-- The blocker follow-up *"Who + what was blocking you?"* (team pulse, secondary)
 
-Focus your themes on the **topic experiences**; treat process/comments and blocker text as secondary.
+Focus your themes on the **topic experiences**; treat process/comments as secondary. The blocker follow-up *"Who + what was blocking you?"* is **not yours** — it is extracted from the raw file and reported on the Blockers tab. Never pull a theme or a quote from it.
 
 **Use the question catalogue.** The skill gives you the catalogue (`question-catalogue.py` output, also in `analysis/context.json`): each topic question's `qid` and Q number in form order. Use those qids in `appearsInQuestions` and `debates[].qids`, and give every quote's `question` as the catalogue text. Every quote must come from **one cell**: the dashboard tags it with that cell's question number, and a quote spliced across two answers, or taken from an excluded column (project name, lunch, blocker), has no question and is dropped.
 

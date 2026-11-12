@@ -345,6 +345,33 @@ def test_no_email_addresses(html):
     assert not found, found[:3]
 
 
+def blockers_sit_below_the_divider_only_when_present(html):
+    """The standing blocked question is about people, not the week's topic, so it
+    sits outside the story beside People — and leaves no trace without one."""
+    assert ">Blockers<" not in html
+    assert "'blockers'" not in html
+    c = dict(FIXTURE, blockers={
+        "question": "Are you currently blocked?", "detailQuestion": "Who + what?",
+        "blockedBy": "Sam", "responseCount": 3, "blockedCount": 1, "byOwner": 1,
+        "bySomeoneElse": 0, "notBlocked": 2, "notApplicable": 0,
+        "severityCounts": {"high": 1, "moderate": 0, "low": 0},
+        "people": [{"respondent": "Alice Smith", "blockedBy": "Sam", "severity": "high",
+                    "severityLabel": "Blocked for more than a day",
+                    "answer": "1. Yes - for more than a day", "detail": "the pricing sign-off",
+                    "photoUrl": None}],
+        "needsReview": []})
+    out = render(c)
+    n = nav(out)
+    assert n.find("ds-navdivider") < n.find(">People<") < n.find(">Blockers<"), n
+    ids = json.loads(re.search(r"chapters: (\[.*?\])", out).group(1))
+    assert ids[-2:] == ["people", "blockers"], ids     # #blockers links directly
+    section = chapter(out, "blockers")
+    assert section and "the pricing sign-off" in section
+    # outside the story: no Next button, and the story's last chapter still ends it
+    assert "ds-nextbtn" not in section
+    assert "← Back to the start" in chapter(out, "next")
+
+
 def main():
     html = render(FIXTURE)
     test_beat_shows_headline_tag_and_base(html)
@@ -364,6 +391,7 @@ def main():
     test_write_ins_grouped_as_other()
     test_adoption_gap_not_repeated_in_signals()
     test_nav_order_and_people_last(html)
+    blockers_sit_below_the_divider_only_when_present(html)
     test_next_buttons_chain(html)
     test_topic_lists_questions_with_numbers_and_options(html)
     test_no_responses_or_overview_tab(html)

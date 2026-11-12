@@ -13,11 +13,13 @@ This is NOT an engagement survey. Don't hunt for morale, attrition, or "diplomat
 
 For a topic like AI CLI tools, the open questions are things like:
 - *"When have you found AI CLI to be the best tool for the job? Share your experiences so we can all learn."*
-- *"Your current project — name"* (context, not really analysable text)
+- *"Your current project — name"* (context only, and it names clients: never quote it, never theme it)
 - The "✨IMPORTANT" prompt asking for experiences + rule feedback
 - The general *"Any comments?"* box (often about YakShaver/process — keep but treat as secondary)
 
 Focus your themes on the **topic experiences**; treat process/comments as secondary. The blocker follow-up *"Who + what was blocking you?"* is **not yours** — it is extracted from the raw file and reported on the Blockers tab. Never pull a theme or a quote from it.
+
+**Use the question catalogue.** The skill gives you the catalogue (`question-catalogue.py` output, also in `analysis/context.json`): each topic question's `qid` and Q number in form order. Use those qids in `appearsInQuestions` and `debates[].qids`, and give every quote's `question` as the catalogue text. Every quote must come from **one cell**: the dashboard tags it with that cell's question number, and a quote spliced across two answers, or taken from an excluded column (project name, lunch, blocker), has no question and is dropped.
 
 ## Your task
 
@@ -26,6 +28,7 @@ Focus your themes on the **topic experiences**; treat process/comments as second
 3. **Use-cases & best-practices** — pull out the concrete "this is where it shines / where it doesn't" guidance, since the survey's explicit goal is "so we can all learn".
 4. **Contrarian / standout takes** — individual answers worth calling out by name (a sharp opinion, a clever workflow, a dissent from the majority). Each with respondent, question, verbatim response, and why it stands out.
 5. **Notable quotes** — a curated set of the most quotable, attributed lines for the dashboard.
+6. **Debates** for the "Hot takes" chapter — only where the team **really disagreed**. Each debate is the question in plain words, the `qids` it draws on, and 2 (occasionally 3) sides, each with a short label ("Let it propose", "Too risky") and verbatim quotes from people on that side. Two hosts will take a side each on camera, so the sides must be real positions held by named people. No real disagreement → `"debates": []`. Never manufacture one: a week with no debate and no standouts skips the chapter cleanly.
 
 ## Output format
 
@@ -86,6 +89,19 @@ Focus your themes on the **topic experiences**; treat process/comments as second
     }
   ],
 
+  "debates": [
+    {
+      "qids": ["q5", "qt3"],
+      "question": "Should an agent edit its own config overnight?",
+      "sides": [
+        { "label": "Yes, with a morning review", "quotes": [
+          { "name": "Calum Simpson", "text": "exact cell text, copied character for character" } ] },
+        { "label": "Never unattended", "quotes": [
+          { "name": "Marina Gerber", "text": "exact cell text, copied character for character" } ] }
+      ]
+    }
+  ],
+
   "overallNarrative": {
     "headline": "The team has genuinely adopted AI CLI tools and is past 'should we' onto 'how deep' — with clear shared wisdom on where CLI beats the web UI.",
     "keyTheme": "CLI wins for whole-codebase/agentic work; web wins for cross-device research.",
@@ -102,10 +118,6 @@ Focus your themes on the **topic experiences**; treat process/comments as second
   "focusDeepDive": null
 }
 ```
-
-## Multi-survey data
-
-If multiple files are provided, tag themes with `originatingSurveys` and flag `crossSurvey: true` for themes spanning files. Omit for a single file.
 
 ## Your standards
 

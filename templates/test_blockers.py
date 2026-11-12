@@ -10,6 +10,7 @@ import csv
 import importlib.util
 import os
 import sys
+import subprocess
 import tempfile
 
 spec = importlib.util.spec_from_file_location(
@@ -186,6 +187,28 @@ def regressions():
     b = bc.extract_blockers(a + c, OWNER)
     assert b["responseCount"] == 4, b["responseCount"]
     assert b["blockedCount"] == 3, b["blockedCount"]
+
+    # The question catalogue the agents number from must hold back the same
+    # columns the consolidation does. A follow-up found only by adjacency (its
+    # header never says "block") was otherwise numbered for the agents and not on
+    # the dashboard, so every later Q tag pointed at the wrong question.
+    headers = ["Name", "Rate the rule", STANDING, "Tell us more", "Any other comments?"]
+    records = [["Alice Smith", "4", "1. Yes - for more than a day", "the pricing sign-off", "good week"],
+               ["Bob Jones", "5", "5. No - had a good week", "", "liked the video"],
+               ["Cara Diaz", "3", "2. Yes - for a few hours", "staging access", "more examples please"]]
+    assert bc.extract_blockers(rows_from(headers, records))["detailQuestion"] == "Tell us more"
+    with tempfile.NamedTemporaryFile("w", suffix=".csv", newline="", delete=False) as f:
+        csv.writer(f).writerows([headers] + records)
+        path = f.name
+    try:
+        out = subprocess.run(
+            [sys.executable, os.path.join(os.path.dirname(__file__), "question-catalogue.py"), path],
+            capture_output=True, text=True, check=True).stdout
+    finally:
+        os.unlink(path)
+    import json
+    numbered = [q["text"] for q in json.loads(out)["questions"]]
+    assert numbered == ["Rate the rule", "Any other comments?"], numbered
 
 
 if __name__ == "__main__":

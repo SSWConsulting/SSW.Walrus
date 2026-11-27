@@ -84,10 +84,6 @@ If SSW wanted to move the needle on this topic (more/better adoption), the singl
 }
 ```
 
-## Multi-survey data
-
-If multiple files are provided, add a `perSurveySentiment` array (per-file stance score + dominant stance + response count). Omit for a single file.
-
 ## Your standards
 
 - **Stance toward the topic, not the company** — enthusiasm/skepticism about the tool, never morale.

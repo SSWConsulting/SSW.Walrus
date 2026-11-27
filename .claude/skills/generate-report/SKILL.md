@@ -1,13 +1,13 @@
 ---
 name: generate-report
 description: >
-  One-shot full survey report. Takes one or more CSV/XLSX survey exports (e.g.
-  Microsoft Forms), runs the complete analysis pipeline into a multi-tab HTML
+  One-shot full survey report. Takes one CSV/XLSX survey export (e.g.
+  Microsoft Forms), runs the complete analysis pipeline into a chaptered HTML
   dashboard, records the narrated recap video (best-effort), and deploys to
   surge.sh (or reports the local path when surge isn't logged in). Use when the user
   wants the complete report from a survey file in a single command, says
   "generate a report", "full report", or invokes /generate-report.
-argument-hint: "<survey.csv|xlsx> [more files…] [focus on …]"
+argument-hint: "<survey.csv|xlsx> [focus on …]"
 allowed-tools: Read, Write, Bash, Glob, Grep, Task, Edit, Skill
 user-invocable: true
 ---
@@ -22,12 +22,12 @@ skill-invocation tool, read and follow the two sibling SKILL.md files directly
 
 ```
 /generate-report path/to/survey.xlsx
-/generate-report culture.csv worklife.csv focus on burnout
+/generate-report path/to/survey.csv focus on subagents
 ```
 
 ## Phase 1 — Analyse + dashboard (required)
 
-Invoke the **process-survey** skill with the arguments verbatim (file paths +
+Invoke the **process-survey** skill with the arguments verbatim (one file path +
 optional `focus on …`). When running as the installed `walrus` plugin the skill
 name is `walrus:process-survey`; in a clone of this repo it is `process-survey`.
 

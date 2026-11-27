@@ -1,0 +1,117 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const {
+  loadConsolidatedMeta,
+  buildEmail,
+  shouldRecordRecap,
+  buildResultPayload,
+} = require('../processor-lib');
+
+test('test_recap_off_by_default', () => {
+  assert.equal(shouldRecordRecap({ ELEVENLABS_API_KEY: 'k' }), false);
+});
+
+test('test_recap_needs_both_flag_and_key', () => {
+  assert.equal(shouldRecordRecap({ WALRUS_RECAP_ENABLED: 'true' }), false);
+  assert.equal(shouldRecordRecap({ WALRUS_RECAP_ENABLED: 'true', ELEVENLABS_API_KEY: 'k' }), true);
+});
+
+test('test_email_omits_recap_phrase_when_off', () => {
+  const { message } = buildEmail('s', 'https://x/s/', { topic: 'T' });
+  assert.ok(!message.includes('3-min recap'));
+  assert.ok(message.includes('View the full report:'));
+});
+
+test('test_email_keeps_recap_phrase_when_on', () => {
+  const { message } = buildEmail('s', 'https://x/s/', { topic: 'T' }, { recapIncluded: true });
+  assert.ok(message.includes('View the full report (3-min recap inside):'));
+});
+
+test('test_payload_keeps_null_dashboard_url', () => {
+  const payload = buildResultPayload({
+    notificationType: 'completed',
+    surveyName: 's',
+    fileName: 'f.xlsx',
+    dashboardUrl: null,
+    meta: {},
+    email: { message: 'm', emailHtml: 'h' },
+  });
+  assert.deepEqual(payload, {
+    notificationType: 'completed',
+    surveyName: 's',
+    fileName: 'f.xlsx',
+    dashboardUrl: null,
+    topic: 's',
+    responseCount: null,
+    grade: null,
+    message: 'm',
+    emailHtml: 'h',
+    error: null,
+  });
+});
+
+test('test_failed_payload_carries_error', () => {
+  const payload = buildResultPayload({
+    notificationType: 'failed',
+    surveyName: 's',
+    fileName: 'f.xlsx',
+    error: 'boom',
+  });
+  assert.equal(payload.error, 'boom');
+  assert.equal(payload.dashboardUrl, null);
+  assert.equal(payload.emailHtml, null);
+});
+
+test('test_meta_reads_consolidated', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'walrus-'));
+  try {
+    const dir = path.join(root, 'surveys', 's', '2026-10-27', 'analysis');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, 'consolidated.json'),
+      JSON.stringify({ metadata: { topic: 'AI CLIs', responseCount: 41 } }),
+    );
+    const meta = loadConsolidatedMeta('s', root);
+    assert.equal(meta.topic, 'AI CLIs');
+    assert.equal(meta.responseCount, 41);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('test_write_result_uploads_json', async () => {
+  const { writeResult } = require('../processor-lib');
+  const calls = {};
+  const containerClient = {
+    getBlockBlobClient(name) {
+      calls.name = name;
+      return {
+        async upload(body, length, opts) {
+          Object.assign(calls, { body, length, opts });
+        },
+      };
+    },
+  };
+  const payload = { notificationType: 'completed', dashboardUrl: 'https://x/s/' };
+  await writeResult(containerClient, 'run1-f.xlsx.json', payload);
+  assert.equal(calls.name, 'run1-f.xlsx.json');
+  assert.deepEqual(JSON.parse(calls.body), payload);
+  assert.equal(calls.length, Buffer.byteLength(calls.body));
+  assert.equal(calls.opts.blobHTTPHeaders.blobContentType, 'application/json');
+});
+
+test('test_safe_slug_is_shell_safe', () => {
+  const { safeSlug } = require('../processor-lib');
+  assert.equal(safeSlug('free lunch – ai cli(1-41)'), 'free-lunch-ai-cli-1-41');
+  assert.equal(safeSlug('A&B#c'), 'a-b-c');
+});
+
+test('test_local_survey_file_has_no_spaces_and_lowercase_ext', () => {
+  const { localSurveyFile } = require('../processor-lib');
+  assert.equal(localSurveyFile('Free Lunch – AI CLI (1-41).XLSX'), 'free-lunch-ai-cli-1-41.xlsx');
+  assert.equal(localSurveyFile('survey.csv'), 'survey.csv');
+});

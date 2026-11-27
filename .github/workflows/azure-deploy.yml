@@ -1,14 +1,16 @@
 name: Build & Deploy (Azure)
 
 # Keyless: GitHub OIDC -> Azure (federated credential on id-walrus-deploy).
-# Builds the image server-side with `az acr build` (no Docker), deploys the
-# Bicep, then publishes the Function App.
+# Builds the image server-side with `az acr build` (no Docker), then deploys the
+# Bicep (Container App Job + Logic App).
 #
 # The target environment is driven by repo variables so moving between
 # subscriptions is a variable flip, not a code change:
 #   WALRUS_ENVIRONMENT    staging (default) | prod  -- also picks the bicepparam
 #   AZURE_RESOURCE_GROUP  rg-walrus-staging (default)
 #   AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID
+#   WALRUS_DEPLOY_CONNECTIONS  true (default) | false once the SharePoint/Outlook
+#                              connections are authorised, if redeploys reset them
 # Every other resource name is derived below exactly as infra/modules/*.bicep
 # derives it, so the workflow and the templates stay in step.
 
@@ -25,7 +27,6 @@ env:
   WALRUS_ENVIRONMENT: ${{ vars.WALRUS_ENVIRONMENT || 'staging' }}
   AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP || 'rg-walrus-staging' }}
   ACR_NAME: acrwalrus${{ vars.WALRUS_ENVIRONMENT || 'staging' }}
-  FUNCTION_APP: func-walrus-${{ vars.WALRUS_ENVIRONMENT || 'staging' }}
   IMAGE: walrus-processor
 
 jobs:
@@ -54,13 +55,5 @@ jobs:
             --resource-group "$AZURE_RESOURCE_GROUP" \
             --template-file infra/main.bicep \
             --parameters "infra/${WALRUS_ENVIRONMENT}.bicepparam" \
-            --parameters imageTag=latest
-
-      - name: Install Function App dependencies
-        run: cd azure-function && npm install --production
-
-      - name: Deploy Function App
-        uses: Azure/functions-action@v1
-        with:
-          app-name: ${{ env.FUNCTION_APP }}
-          package: azure-function
+            --parameters imageTag=latest \
+            --parameters deployConnections=${{ vars.WALRUS_DEPLOY_CONNECTIONS || 'true' }}

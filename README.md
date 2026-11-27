@@ -109,14 +109,14 @@ reported as a local path rather than published. The notify step is Azure-pipelin
 # The automated Azure pipeline (optional)
 
 Everything below is the **hands-off weekly automation** SSW runs internally — none
-of it is needed to use the skills above. Every Monday at 8am AEST, a Power
-Automate flow sweeps a SharePoint folder for new survey files, hands them to an
-Azure Container App Job running the Claude Code CLI, and a second flow emails the
-deployed dashboard link to leadership.
+of it is needed to use the skills above. Every Monday at 8am AEST, a Logic App
+sweeps a SharePoint folder for new survey files, hands each one to an Azure
+Container App Job running the Claude Code CLI, waits for it, and emails the
+deployed dashboard link.
 
-Ingress and egress run through **Power Automate** (standard connectors, under a
-service account), so there is **no Azure AD App Registration and no admin consent** —
-see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
+SharePoint and Outlook go through the Logic App's managed connectors (authorised
+once), so there is **no Azure AD App Registration and no admin consent** — see
+[`docs/logic-app-setup.md`](docs/logic-app-setup.md).
 
 ## Architecture
 
@@ -125,17 +125,12 @@ Monday 8am AEST
        │
        ▼
 ┌───────────────────────────────────┐
-│  Power Automate — Flow A           │   Recurrence trigger (Mon 8am AEST)
-│  List SharePoint folder            │
-│  For each new CSV/XLSX:            │
+│  Logic App  logic-walrus-{env}     │   Recurrence trigger (Mon 8am AEST)
+│  Find last Friday's export         │   (name starts with the date)
+│  Skip it if already marked done    │
 │    → blob: survey-inbox/{file}     │
-│    → queue: survey-processing      │
-│    → move file to Processed/       │   (dedup)
-└───────────────┬───────────────────┘
-                ▼
-┌───────────────────────────────────┐
-│  Function: ProcessSurveyQueue      │   queue trigger → managed identity
-│  Start Container App Job           │
+│    → start the Container App Job   │   (ARM, managed identity)
+│    → poll until it finishes        │
 └───────────────┬───────────────────┘
                 ▼
 ┌───────────────────────────────────┐
@@ -143,13 +138,14 @@ Monday 8am AEST
 │  1. Download survey-inbox blob     │
 │  2. Claude Code /process-survey    │
 │  3. Dashboard → Azure $web         │
-│  4. /record-walkthrough recap      │   (best-effort; re-embeds + re-deploys)
-│  5. queue: survey-done             │
+│  4. /record-walkthrough recap      │   (only when recapEnabled; off for now)
+│  5. blob: survey-results/{run}.json│
 └───────────────┬───────────────────┘
                 ▼
 ┌───────────────────────────────────┐
-│  Power Automate — Flow B           │   survey-done queue trigger
-│  Email the dashboard link          │
+│  Logic App (same run)              │
+│  Read the result → email the link  │
+│  → mark done in survey-results/    │   (dedup; failures alert, retry by hand)
 └───────────────────────────────────┘
 ```
 
@@ -159,22 +155,23 @@ Monday 8am AEST
 |----------|--------|---------|
 | Managed Identity | `id-walrus-{env}` | Auth for all Azure services |
 | Key Vault | `kv-walrus-{env}` | Secrets storage (RBAC-enabled) |
-| Storage Account | `sawalrus{env}` | Queues (`survey-processing`, `survey-done`) + Blobs (`survey-inbox`, `survey-results`) |
+| Storage Account | `sawalrus{env}` | Blobs `survey-inbox` (the week's file) + `survey-results` (the run's result JSON) |
 | Dashboard Storage | `sawalrus{env}web` | Static website (`$web`) hosting for dashboards |
 | Container App Env | `ce-walrus-{env}` | Container runtime environment |
 | Container App Job | `job-walrus-{env}` | Claude Code processor |
-| Function App | `func-walrus-{env}` | Queue trigger → starts the Container App Job |
+| Logic App | `logic-walrus-{env}` | Weekly run: SharePoint → job → email |
+| API connections | `conn-sharepoint-walrus-{env}`, `conn-office365-walrus-{env}` | SharePoint + Outlook, authorised once |
+| Failed-run alert | `alert-walrus-{env}-runs-failed` + `ag-walrus-{env}` | Emails the alert list if a run fails |
 
-The container's managed identity is granted **Storage Blob Data Contributor** and
-**Storage Queue Data Contributor** on `sawalrus{env}`, and **Storage Blob Data
-Contributor** on `sawalrus{env}web` — so it reads/writes blobs and enqueues
-`survey-done` without any keys in code.
+The managed identity (shared by the job and the Logic App) is granted **Storage
+Blob Data Contributor** on `sawalrus{env}` and `sawalrus{env}web`, and Contributor on
+the job (to start it and read its executions) — no keys anywhere.
 
-## Power Automate Flows
+## Logic App
 
-The SharePoint ingress and the email delivery are two Power Automate flows owned by
-a service account. Full build instructions (triggers, actions, connections, DLP
-notes) are in [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
+The SharePoint ingress and the email delivery are one Logic App. Authorising its
+two connections, running it by hand, recipients, alerts and turning the recap back
+on are all in [`docs/logic-app-setup.md`](docs/logic-app-setup.md).
 
 ## Key Vault Secrets
 
@@ -183,7 +180,7 @@ After deployment, populate these in `kv-walrus-{env}`:
 | Secret | Value |
 |---|---|
 | `anthropic-oauth-token` | Claude Code OAuth token |
-| `elevenlabs-api-key` | ElevenLabs TTS key (optional — enables the recap video) |
+| `elevenlabs-api-key` | ElevenLabs TTS key (optional — the recap also needs `recapEnabled = true`) |
 
 ## Infrastructure Deployment
 
@@ -214,22 +211,14 @@ az deployment group create \
      --account-name sawalrusstagingweb \
      --static-website --index-document index.html --404-document index.html
    ```
-3. Deploy Azure Functions:
-   ```bash
-   cd azure-function && npm install
-   func azure functionapp publish func-walrus-staging
-   ```
-4. Grab the storage account key for the Power Automate connections:
-   ```bash
-   az storage account keys list -n sawalrusstaging --query '[0].value' -o tsv
-   ```
-5. Build the two Power Automate flows — see [`docs/power-automate-setup.md`](docs/power-automate-setup.md).
+3. Authorise the SharePoint and Outlook connections (once) — see
+   [`docs/logic-app-setup.md`](docs/logic-app-setup.md).
 
 ## GitHub Actions
 
 The `azure-deploy.yml` workflow builds the image server-side with `az acr build`
-(keyless, via GitHub OIDC), deploys the Bicep, and publishes the Function App on
-pushes to `main`.
+(keyless, via GitHub OIDC) and deploys the Bicep (job + Logic App) on pushes to
+`main`.
 
 Which subscription it deploys into is driven entirely by repo variables, so
 moving environments is a variable flip rather than a code change:
@@ -241,8 +230,9 @@ moving environments is a variable flip rather than a code change:
 | `AZURE_SUBSCRIPTION_ID` | — | Target subscription |
 | `AZURE_CLIENT_ID` | — | Deploy identity holding the federated credential |
 | `AZURE_TENANT_ID` | — | SSW tenant |
+| `WALRUS_DEPLOY_CONNECTIONS` | `true` | Set `false` once the connections are authorised, if redeploys reset them |
 
-`ACR_NAME` and `FUNCTION_APP` are derived from `WALRUS_ENVIRONMENT` using the
+`ACR_NAME` is derived from `WALRUS_ENVIRONMENT` using the
 same naming convention as `infra/modules/*.bicep`, so they never drift.
 
 ## Environment Variables
@@ -251,21 +241,14 @@ same naming convention as `infra/modules/*.bicep`, so they never drift.
 
 | Variable | Source | Description |
 |----------|--------|-------------|
-| `INBOX_BLOB` | Queue message | Blob name in `survey-inbox` to process |
-| `SURVEY_NAME` | Queue message | Sanitized survey name |
-| `FILE_NAME` | Queue message | Original file name (with extension) |
-| `STORAGE_ACCOUNT` | Bicep | Main storage account (inbox/results/done) |
+| `INBOX_BLOB` | Logic App (per run) | Blob name in `survey-inbox` to process |
+| `SURVEY_NAME` | Logic App (per run) | Sanitized survey name |
+| `FILE_NAME` | Logic App (per run) | Original file name (with extension) |
+| `RESULT_BLOB` | Logic App (per run) | Where to write the result JSON in `survey-results` |
+| `STORAGE_ACCOUNT` | Bicep | Main storage account (inbox/results) |
+| `WALRUS_RECAP_ENABLED` | Bicep (`recapEnabled`) | `true` records the recap video (also needs the ElevenLabs key) |
 | `DASHBOARD_STORAGE_ACCOUNT` | Bicep | Static website storage account for dashboards |
 | `DASHBOARD_BASE_URL` | Bicep | Static website host used to build the public dashboard URL |
 | `KEY_VAULT_URL` | Bicep | Key Vault URL (for the Claude OAuth token) |
 | `CLAUDE_MODEL` | Bicep | Claude model (default: claude-opus-4-8) |
 | `AZURE_CLIENT_ID` | Bicep | Managed identity client ID |
-
-### Function App
-
-| Variable | Source | Description |
-|----------|--------|-------------|
-| `AzureWebJobsStorage` | Bicep | Functions runtime + `survey-processing` queue trigger |
-| `AZURE_CLIENT_ID` | Bicep | Managed identity client ID (starts the job) |
-| `CONTAINER_APP_JOB_NAME` | Bicep | Container App Job name |
-| `RESOURCE_GROUP` | Bicep | Resource group name |

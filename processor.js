@@ -3,11 +3,11 @@
 /**
  * processor.js — Claude Code CLI wrapper for survey processing
  *
- * Runs inside the Container App Job. Downloads the survey file that Power Automate
- * dropped in the `survey-inbox` blob container, invokes Claude Code to process it
- * (dashboard + embedded recap video, deployed to $web), and enqueues a `survey-done`
- * message that Power Automate (Flow B) turns into an email with the dashboard link.
- * All storage access uses the container's managed identity.
+ * Runs inside the Container App Job, started by the Logic App. Downloads the survey
+ * file the Logic App dropped in the `survey-inbox` blob container, invokes Claude
+ * Code to process it (dashboard, deployed to $web; recap video only when switched
+ * on), and writes the run's result JSON to `survey-results/{RESULT_BLOB}`, which the
+ * Logic App reads back and emails. All storage access uses the managed identity.
  */
 
 const { spawn } = require('child_process');
@@ -15,10 +15,19 @@ const fs = require('fs');
 const path = require('path');
 const { DefaultAzureCredential } = require('@azure/identity');
 const { BlobServiceClient } = require('@azure/storage-blob');
-const { QueueServiceClient } = require('@azure/storage-queue');
+const {
+  loadConsolidatedMeta,
+  buildEmail,
+  shouldRecordRecap,
+  buildResultPayload,
+  writeResult,
+  safeSlug,
+  localSurveyFile,
+  extractDeployedUrl,
+  RESULTS_CONTAINER,
+} = require('./processor-lib');
 
 const INBOX_CONTAINER = 'survey-inbox';
-const DONE_QUEUE = 'survey-done';
 const STORAGE_SUFFIX = process.env.STORAGE_SUFFIX || 'core.windows.net';
 
 // Phase budgets. The Container App Job replicaTimeout must be larger than the
@@ -46,8 +55,13 @@ async function main() {
     process.exit(1);
   }
 
-  const surveyName = SURVEY_NAME;
+  const surveyName = safeSlug(SURVEY_NAME);
   const fileName = FILE_NAME || path.basename(INBOX_BLOB);
+  let resultBlob = process.env.RESULT_BLOB;
+  if (!resultBlob) {
+    resultBlob = `${fileName}.json`;
+    console.warn(`[processor] RESULT_BLOB not set — writing the result to ${RESULTS_CONTAINER}/${resultBlob}`);
+  }
 
   console.log(`[processor] Starting processing for survey: ${surveyName}`);
   console.log(`[processor] Inbox blob: ${INBOX_CONTAINER}/${INBOX_BLOB}`);
@@ -60,11 +74,13 @@ async function main() {
   const credential = new DefaultAzureCredential({
     managedIdentityClientId: process.env.AZURE_CLIENT_ID,
   });
+  const results = new BlobServiceClient(`https://${STORAGE_ACCOUNT}.blob.${STORAGE_SUFFIX}`, credential)
+    .getContainerClient(RESULTS_CONTAINER);
 
   try {
     // 1. Download the survey file from the inbox blob container
     console.log('[processor] Downloading survey file from blob inbox...');
-    const localPath = await downloadInbox(STORAGE_ACCOUNT, credential, INBOX_BLOB, fileName);
+    const localPath = await downloadInbox(STORAGE_ACCOUNT, credential, INBOX_BLOB, localSurveyFile(fileName));
     console.log(`[processor] Downloaded: ${fileName} → ${localPath}`);
 
     // 2. Run Claude Code: analysis + consolidation + dashboard (phase 1)
@@ -104,119 +120,56 @@ async function main() {
     // The slug /process-survey actually deployed under (parsed from DEPLOYED_URL)
     // may differ from SURVEY_NAME — e.g. it's derived from the rule ("ai-cli-tools"
     // vs the blob "freelunch-ai-cli-test"). Everything downstream (recap folder,
-    // the survey-done message) must follow THAT slug, not the blob name.
+    // the result payload) must follow THAT slug, not the blob name.
     const slugMatch = dashboardUrl && dashboardUrl.match(/\/([^/]+)\/?$/);
     const deployedSlug = (slugMatch && slugMatch[1]) || surveyName;
 
     // 3b. Recap walkthrough — a SEPARATE phase (the record-walkthrough skill).
     // Best-effort: it records the recap, re-embeds it, and re-deploys to the same
     // URL — a failure here never affects the already-shipped dashboard.
-    if (dashboardUrl && process.env.ELEVENLABS_API_KEY) {
+    // Off unless WALRUS_RECAP_ENABLED=true and the ElevenLabs key is loaded.
+    let recapIncluded = false;
+    if (dashboardUrl && shouldRecordRecap(process.env)) {
       console.log(`[processor] Recording recap walkthrough (/record-walkthrough ${deployedSlug})...`);
       try {
         await runClaude(`/record-walkthrough ${deployedSlug}`, model, PHASE2_TIMEOUT_MS);
+        recapIncluded = true;
         console.log('[processor] Recap walkthrough complete');
       } catch (err) {
         console.warn(`[processor] Recap walkthrough skipped: ${err.message}`);
       }
     }
 
-    // 4. Enqueue the survey-done message (Power Automate Flow B emails the result).
-    // The processor composes the body from the digest so Flow B needs no logic —
-    // bind the email body to `emailHtml` (HTML on) or the plain-text `message`.
+    // 4. Hand the result back to the Logic App, which emails it. The processor
+    // composes the body from the digest so the workflow needs no logic.
     const meta = loadConsolidatedMeta(deployedSlug);
-    const { message, emailHtml } = buildEmail(deployedSlug, dashboardUrl, meta);
-    await enqueueDone(STORAGE_ACCOUNT, credential, {
+    const email = buildEmail(deployedSlug, dashboardUrl, meta, { recapIncluded });
+    await writeResult(results, resultBlob, buildResultPayload({
       notificationType: 'completed',
       surveyName: deployedSlug,
       fileName,
       dashboardUrl,
-      topic: meta.topic || deployedSlug,
-      responseCount: meta.responseCount || null,
-      grade: meta.grade || null,
-      message,
-      emailHtml,
-    });
-    console.log('[processor] Enqueued survey-done message');
+      meta,
+      email,
+    }));
+    console.log(`[processor] Wrote result ${RESULTS_CONTAINER}/${resultBlob}`);
 
     console.log('[processor] Done!');
   } catch (error) {
     console.error(`[processor] Fatal error: ${error.message}`);
+    // Best-effort: give the Logic App's alert the reason. A missing result still alerts.
+    try {
+      await writeResult(results, resultBlob, buildResultPayload({
+        notificationType: 'failed',
+        surveyName,
+        fileName,
+        error: error.message,
+      }));
+    } catch (writeErr) {
+      console.error(`[processor] Could not write the failed result: ${writeErr.message}`);
+    }
     process.exit(1);
   }
-}
-
-// Pull the headline facts from the deployed digest for the result email.
-function loadConsolidatedMeta(slug) {
-  const base = path.join('surveys', slug);
-  if (!fs.existsSync(base)) return {};
-  for (const dateDir of fs.readdirSync(base)) {
-    const f = path.join(base, dateDir, 'analysis', 'consolidated.json');
-    if (!fs.existsSync(f)) continue;
-    try {
-      const c = JSON.parse(fs.readFileSync(f, 'utf8'));
-      const m = c.metadata || {};
-      const exec = c.executiveSummary || {};
-      const bullets = Array.isArray(exec.bullets) ? exec.bullets.slice(0, 3) : [];
-      return {
-        topic: m.topic || m.surveyName || slug,
-        responseCount: m.responseCount || null,
-        grade: c.overallGrade || null,
-        verdict: String(exec.overallVerdict || '').replace(/\s+/g, ' ').trim(),
-        video: (m.videoWatched || {}).title || null,
-        bullets,
-      };
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
-// Compose the result email body (plain `message` + styled `emailHtml`) so Flow B
-// just renders one field — no flow-side logic or new dynamic content needed.
-// The HTML layout lives in templates/email.html (standard SSW format); we only
-// fill placeholders here so the design is editable without touching code.
-function buildEmail(surveyName, dashboardUrl, meta) {
-  const esc = (s) => String(s == null ? '' : s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-  const topic = meta.topic || surveyName;
-  // Meta line: response count only. (No A-F grade — that lives on the dashboard's verdict.)
-  const metaLine = meta.responseCount ? `${meta.responseCount} responses` : '';
-  // The SSW logo is published at the web root by upload-dashboard.js; reference it
-  // by absolute URL (email clients strip data URIs). Derived from the deploy origin.
-  let logoUrl = null;
-  try { if (dashboardUrl) logoUrl = new URL(dashboardUrl).origin + '/ssw-logo.png'; } catch { /* leave null */ }
-
-  const message = [
-    `${topic} — Digesting the Fat`,
-    metaLine ? `${metaLine}.` : null,
-    meta.verdict || null,
-    `View the full report (3-min recap inside):`,
-    dashboardUrl,
-    `— SSW · Chewing the Fat`,
-  ].filter(Boolean).join('\n\n');
-
-  const logoBlock = logoUrl
-    ? `<img src="${esc(logoUrl)}" alt="SSW" width="120" style="display:block;height:auto;border:0;outline:none;text-decoration:none" />`
-    : `<span style="font-size:20px;font-weight:800;color:#333333;letter-spacing:1px">SSW</span>`;
-  const verdictBlock = meta.verdict
-    ? `<tr><td style="padding:0 0 20px;font-size:15px;line-height:1.5;color:#333333">${esc(meta.verdict)}</td></tr>`
-    : '';
-
-  // Strip the leading doc comment FIRST — it lists the same {{PLACEHOLDER}} names,
-  // and a naive first-match .replace() would fill those instead of the real ones.
-  const tpl = fs.readFileSync(path.join(__dirname, 'templates', 'email.html'), 'utf8')
-    .replace(/^\s*<!--[\s\S]*?-->\s*/, '');
-  const emailHtml = tpl
-    .replace('{{LOGO_BLOCK}}', logoBlock)
-    .replace('{{TOPIC}}', esc(topic))
-    .replace('{{META}}', esc(metaLine))
-    .replace('{{VERDICT_BLOCK}}', verdictBlock)
-    .replace(/\{\{DASHBOARD_URL\}\}/g, esc(dashboardUrl || '#'))
-    .replace('{{BUTTON_LABEL}}', 'View the full report')
-    .replace('{{FOOTER}}', 'SSW &middot; Chewing the Fat');
-
-  return { message, emailHtml };
 }
 
 async function downloadInbox(account, credential, blobName, fileName) {
@@ -230,18 +183,6 @@ async function downloadInbox(account, credential, blobName, fileName) {
   const localPath = path.join(downloadDir, fileName);
   await blobClient.downloadToFile(localPath);
   return localPath;
-}
-
-async function enqueueDone(account, credential, payload) {
-  const service = new QueueServiceClient(`https://${account}.queue.${STORAGE_SUFFIX}`, credential);
-  // Plain JSON (not base64) — the Power Automate Azure Queues trigger reads the
-  // message content directly and parses it.
-  await service.getQueueClient(DONE_QUEUE).sendMessage(JSON.stringify(payload));
-}
-
-function extractDeployedUrl(output) {
-  const m = output.match(/^DEPLOYED_URL=(.+)$/m);
-  return m ? m[1].trim() : null;
 }
 
 // Phase-2 prompt: finish delivery from the analysis already written to disk,

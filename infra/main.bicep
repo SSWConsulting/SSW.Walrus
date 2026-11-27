@@ -1,5 +1,6 @@
 // SSW.Walrus - Main Infrastructure Orchestration
-// Survey analysis pipeline: Power Automate -> queue -> Claude -> Azure-hosted dashboard -> email
+// Survey analysis pipeline: Logic App (Mon 8am) -> SharePoint file -> blob -> Container App Job
+// (Claude) -> $web dashboard + result blob -> Logic App emails the result
 //
 // Deploy: az deployment group create -g <rg> --template-file main.bicep --parameters staging.bicepparam
 //         (prod.bicepparam for the SSW-owned production stack)
@@ -31,6 +32,29 @@ param claudeModel string = 'claude-opus-4-8'
 
 @description('ElevenLabs voice ID for the recap walkthrough (record-walkthrough skill)')
 param walkthroughVoiceId string = 'x9d3o60RLzlwegAit1SJ'
+
+@description('Record the narrated recap video (also needs the elevenlabs-api-key secret). Parked until SSW has a key.')
+param recapEnabled bool = false
+
+@description('SharePoint site URL holding the survey folder')
+param sharePointSiteUrl string = 'https://sswcom.sharepoint.com/sites/SSWFreeLunch'
+
+@description('Folder the Forms export is dropped into each week (read only; never written)')
+param sharePointFolderPath string = '/Shared Documents/General'
+
+@description('Weekly result email recipients')
+@minLength(1)
+param resultEmailTo array
+
+@description('Failure / empty-Monday alert recipients')
+@minLength(1)
+param alertEmailTo array
+
+@description('Run the Logic App on its Monday schedule (false = workflow disabled)')
+param scheduleEnabled bool
+
+@description('Deploy the SharePoint/Outlook API connections. Set false after the first deploy if redeploying resets their authorisation.')
+param deployConnections bool = true
 
 @description('Cost category tag for billing')
 param costCategoryTag CostCategoryTag
@@ -69,7 +93,7 @@ module keyVaultRoleAssignment 'modules/keyVaultRoleAssignment.bicep' = {
   }
 }
 
-// 4a. Storage (queues + inbox/results blobs; Power Automate <-> container bridge)
+// 4a. Storage (survey-inbox + survey-results blobs; Logic App <-> container bridge)
 module storage 'modules/storage.bicep' = {
   name: 'provision-storage-${suffix}'
   params: {
@@ -128,6 +152,7 @@ module containerApp 'modules/containerApp.bicep' = {
     dashboardStorageAccountName: dashboardStorage.outputs.name
     dashboardBaseUrl: dashboardStorage.outputs.staticWebsiteHost
     walkthroughVoiceId: walkthroughVoiceId
+    recapEnabled: recapEnabled
     costCategoryTag: costCategoryTag
   }
   dependsOn: [
@@ -135,22 +160,36 @@ module containerApp 'modules/containerApp.bicep' = {
   ]
 }
 
-// 7. Function App (Queue trigger -> starts the Container App Job)
-module functionApp 'modules/functionApp.bicep' = {
-  name: 'provision-function-app-${suffix}'
+// 7. SharePoint + Outlook API connections (authorise once in the portal)
+module logicAppConnections 'modules/logicAppConnections.bicep' = if (deployConnections) {
+  name: 'provision-logic-connections-${suffix}'
+  params: {
+    project: project
+    environment: environment
+    location: location
+    costCategoryTag: costCategoryTag
+  }
+}
+
+// 8. Logic App (Mon 8am: SharePoint -> blob -> job -> email) + failed-run alert
+module logicApp 'modules/logicApp.bicep' = {
+  name: 'provision-logic-app-${suffix}'
   params: {
     project: project
     environment: environment
     location: location
     managedIdentityId: managedIdentity.outputs.id
-    managedIdentityClientId: managedIdentity.outputs.clientId
-    keyVaultUrl: keyVault.outputs.keyVaultUrl
-    storageConnectionString: storage.outputs.connectionString
-    containerAppJobName: containerApp.outputs.jobName
+    storageAccountName: storage.outputs.name
+    jobName: containerApp.outputs.jobName
+    sharePointSiteUrl: sharePointSiteUrl
+    sharePointFolderPath: sharePointFolderPath
+    resultEmailTo: resultEmailTo
+    alertEmailTo: alertEmailTo
+    scheduleEnabled: scheduleEnabled
     costCategoryTag: costCategoryTag
   }
   dependsOn: [
-    keyVaultRoleAssignment
+    logicAppConnections
   ]
 }
 
@@ -162,6 +201,6 @@ output storageAccountName string = storage.outputs.name
 output dashboardStorageAccountName string = dashboardStorage.outputs.name
 output dashboardStaticWebsiteHost string = dashboardStorage.outputs.staticWebsiteHost
 output containerAppJobName string = containerApp.outputs.jobName
-output functionAppName string = functionApp.outputs.name
+output logicAppName string = logicApp.outputs.name
 output acrLoginServer string = containerRegistry.outputs.loginServer
 output acrName string = containerRegistry.outputs.name
